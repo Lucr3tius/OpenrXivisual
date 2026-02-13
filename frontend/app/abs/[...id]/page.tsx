@@ -9,16 +9,17 @@ import { GlassCard } from "@/components/ui/glass-card";
 import { MosaicBackground } from "@/components/ui/mosaic-background";
 import { ShardField } from "@/components/ui/glass-shard";
 import type { Paper, ProcessingStatus } from "@/lib/types";
-import { DEMO_PAPER_IDS, getDemoPaper } from "@/lib/mock-data";
+import { DEMO_PAPER_ID, DEMO_PAPER_IDS, getDemoPaper } from "@/lib/mock-data";
 import {
   getPaper,
   processArxivPaper,
   getProcessingStatus,
   toProcessingStatus,
 } from "@/lib/api";
+import { SplitScreenDemo } from "@/components/SplitScreenDemo";
 
 // --- Demo simulation config ---
-const DEMO_DURATION_MS = 5000;
+const DEMO_DURATION_MS = 15000;
 const DEMO_TICK_MS = 50;
 const DEMO_STEPS = [
   { label: "Fetching paper from arXiv", at: 0 },
@@ -311,7 +312,11 @@ export default function PaperPage({
                 <NotFoundState arxivId={state.arxivId} onProcess={startProcessing} />
               )}
 
-              {state.type === "processing" && <ProcessingState status={state.status} />}
+              {state.type === "processing" && (
+                arxivId === DEMO_PAPER_ID
+                  ? <SplitScreenDemo status={state.status} />
+                  : <ProcessingState status={state.status} />
+              )}
 
               {state.type === "error" && (
                 <ErrorState message={state.message} onRetry={loadPaper} />
