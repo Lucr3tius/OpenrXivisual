@@ -72,6 +72,16 @@ html {
   50% { opacity: var(--shard-opacity-high, 0.06); }
 }
 
+/* Video placeholder shimmer */
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s ease-in-out infinite;
+}
+
 /* Spotlight animation */
 @keyframes spotlight {
   0% {

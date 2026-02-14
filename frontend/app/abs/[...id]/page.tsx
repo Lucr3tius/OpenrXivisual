@@ -263,6 +263,15 @@ export default function PaperPage({
           >
             <MosaicBackground showLogo logoYFraction={0.28} />
             <ShardField />
+            {/* Dim background during split-screen demo for readability */}
+            {state.type === "processing" && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.8 }}
+                className="absolute inset-0 bg-black/60"
+              />
+            )}
           </motion.div>
         )}
       </AnimatePresence>

@@ -134,17 +134,69 @@ export function SplitScreenDemo({ status }: SplitScreenDemoProps) {
         </div>
 
         {/* Split screen */}
-        <div className="flex flex-col md:flex-row gap-4 md:gap-5">
+        <div className="flex flex-col md:flex-row items-stretch gap-3 md:gap-0">
           {/* Left: The Paper */}
-          <div className="w-full md:w-[50%] shrink-0">
+          <div className="w-full md:w-[calc(50%-28px)] shrink-0">
             <PaperPanel
               activeIndex={activeIndex}
               sectionProgress={sectionProgress}
             />
           </div>
 
+          {/* Center: Transformation Arrow (desktop) */}
+          <div className="hidden md:flex items-center justify-center w-14 shrink-0">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-px h-16 bg-gradient-to-b from-transparent to-white/[0.15]" />
+              <motion.div
+                animate={{
+                  scale: [1, 1.1, 1],
+                  opacity: [0.6, 1, 0.6],
+                }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
+                className="w-9 h-9 rounded-full border border-white/[0.15] bg-white/[0.05] backdrop-blur-sm flex items-center justify-center"
+              >
+                <svg
+                  className="w-4 h-4 text-white/60"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"
+                  />
+                </svg>
+              </motion.div>
+              <div className="w-px h-16 bg-gradient-to-t from-transparent to-white/[0.15]" />
+            </div>
+          </div>
+
+          {/* Center: Transformation Arrow (mobile) */}
+          <div className="flex md:hidden items-center justify-center py-1">
+            <motion.div
+              animate={{ opacity: [0.4, 0.8, 0.4] }}
+              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <svg
+                className="w-5 h-5 text-white/40 rotate-90"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+              </svg>
+            </motion.div>
+          </div>
+
           {/* Right: ArXivisual Output */}
-          <div className="w-full md:w-[50%]">
+          <div className="w-full md:w-[calc(50%-28px)]">
             <VisualizationPanel
               section={activeSection}
               index={activeIndex}
@@ -179,13 +231,18 @@ function PaperPanel({
   }, [activeIndex]);
 
   return (
-    <div className="rounded-2xl bg-white/[0.03] border border-white/[0.08] overflow-hidden flex flex-col">
+    <div className="rounded-2xl bg-white/[0.06] backdrop-blur-sm border border-white/[0.08] overflow-hidden flex flex-col">
       {/* Header */}
-      <div className="px-5 pt-4 pb-3 border-b border-white/[0.06] flex items-center justify-between">
-        <span className="text-[11px] font-medium text-white/25 uppercase tracking-wider">
-          Original Paper
-        </span>
-        <span className="text-[11px] text-white/20 font-mono">
+      <div className="px-5 pt-4 pb-3 border-b border-white/[0.08] flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <svg className="w-4 h-4 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+          </svg>
+          <span className="text-sm font-medium text-white/70 tracking-wide">
+            Original Paper
+          </span>
+        </div>
+        <span className="text-[11px] text-white/30 font-mono">
           arXiv:1706.03762
         </span>
       </div>
@@ -360,13 +417,18 @@ function VisualizationPanel({
   }, [revealedLength]);
 
   return (
-    <div className="rounded-2xl bg-white/[0.04] border border-white/[0.08] overflow-hidden flex flex-col">
+    <div className="rounded-2xl bg-white/[0.07] backdrop-blur-sm border border-white/[0.08] overflow-hidden flex flex-col">
       {/* Header */}
-      <div className="px-5 pt-4 pb-3 border-b border-white/[0.06] flex items-center justify-between">
-        <span className="text-[11px] font-medium text-white/25 uppercase tracking-wider">
-          ArXivisual Output
-        </span>
-        <span className="flex items-center gap-2 text-[11px] text-white/30">
+      <div className="px-5 pt-4 pb-3 border-b border-white/[0.08] flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <svg className="w-4 h-4 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
+          </svg>
+          <span className="text-sm font-medium text-white/70 tracking-wide">
+            ArXivisual Output
+          </span>
+        </div>
+        <span className="flex items-center gap-2 text-[11px] text-white/40">
           <span
             className="w-1.5 h-1.5 rounded-full animate-pulse"
             style={{ backgroundColor: color }}
@@ -418,8 +480,90 @@ function VisualizationPanel({
             </div>
             <div ref={endRef} />
           </div>
+
+          {/* Video placeholder */}
+          <VideoPlaceholder
+            sectionProgress={sectionProgress}
+            color={color}
+          />
         </motion.div>
       </AnimatePresence>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Video placeholder — black box with play button to show video generation
+// ---------------------------------------------------------------------------
+
+function VideoPlaceholder({
+  sectionProgress,
+  color,
+}: {
+  sectionProgress: number;
+  color: string;
+}) {
+  const visible = sectionProgress > 0.3;
+
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.4 }}
+          className="mx-5 mb-5 mt-2"
+        >
+          {/* Label */}
+          <div className="flex items-center gap-2 mb-2.5">
+            <svg className="w-3.5 h-3.5 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
+            </svg>
+            <span className="text-[11px] text-white/35 font-medium tracking-wide">
+              Manim Visualization
+            </span>
+          </div>
+
+          {/* Black video placeholder box */}
+          <div className="relative aspect-video rounded-xl bg-black border border-white/[0.08] overflow-hidden">
+            {/* Subtle shimmer */}
+            <div
+              className="absolute inset-0 opacity-30 animate-shimmer"
+              style={{
+                background: `linear-gradient(135deg, transparent 40%, ${color}15 50%, transparent 60%)`,
+                backgroundSize: "200% 200%",
+              }}
+            />
+
+            {/* Center play button */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="h-12 w-12 rounded-full border border-white/[0.15] bg-white/[0.06] flex items-center justify-center backdrop-blur-sm">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5 text-white/40 translate-x-[1px]"
+                  fill="currentColor"
+                >
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Bottom label */}
+            <div className="absolute bottom-0 inset-x-0 p-3 bg-gradient-to-t from-black/60 to-transparent">
+              <div className="flex items-center gap-2">
+                <span
+                  className="w-1.5 h-1.5 rounded-full animate-pulse"
+                  style={{ backgroundColor: color }}
+                />
+                <span className="text-[11px] text-white/35">
+                  {sectionProgress < 0.8 ? "Rendering animation..." : "Finalizing video..."}
+                </span>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
