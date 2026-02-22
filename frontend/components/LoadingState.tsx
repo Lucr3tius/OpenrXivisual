@@ -60,13 +60,15 @@ export function TextSkeleton({
   lines?: number;
   className?: string;
 }) {
+  const widthForLine = (lineIndex: number) => `${60 + ((lineIndex * 17) % 40)}%`;
+
   return (
     <div className={`space-y-3 ${className}`}>
       {Array.from({ length: lines }).map((_, i) => (
         <div
           key={i}
           className="h-4 animate-pulse rounded bg-white/[0.06]"
-          style={{ width: `${Math.random() * 40 + 60}%` }}
+          style={{ width: widthForLine(i) }}
         />
       ))}
     </div>

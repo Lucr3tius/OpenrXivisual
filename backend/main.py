@@ -26,12 +26,13 @@ logging.getLogger("rendering").setLevel(logging.INFO)
 logging.getLogger("jobs").setLevel(logging.INFO)
 logging.getLogger("agents").setLevel(logging.INFO)
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 
 from api.routes import router as api_router
 from db import init_db
+from utils.domain_utils import get_branding, DOMAIN_CONFIG
 
 
 @asynccontextmanager
@@ -83,3 +84,23 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT") or os.getenv("API_PORT", "8000"))
 
     uvicorn.run("main:app", host=host, port=port, reload=True)
+
+
+# === Multi-domain branding middleware ===
+
+@app.middleware("http")
+async def add_branding(request: Request, call_next):
+    """Inject branding info into request state based on domain."""
+    host = request.headers.get("host", "").split(":")[0].lower()
+    branding = get_branding(host)
+    request.state.branding = branding
+    request.state.host = host
+    response = await call_next(request)
+    return response
+
+
+@app.get("/api/branding")
+async def get_current_branding(request: Request):
+    """Get branding for current domain."""
+    branding = getattr(request.state, "branding", get_branding("rxivisual.com"))
+    return branding

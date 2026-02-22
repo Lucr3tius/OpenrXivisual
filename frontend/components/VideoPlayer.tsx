@@ -39,15 +39,6 @@ export function VideoPlayer({
     return Math.max(0, Math.min(100, (currentTime / duration) * 100));
   }, [currentTime, duration]);
 
-  useEffect(() => {
-    setIsPlaying(false);
-    setIsReady(false);
-    setHadError(false);
-    setProgress(0);
-    setCurrentTime(0);
-    setDuration(0);
-  }, [src]);
-
   function togglePlay() {
     const v = videoRef.current;
     if (!v) return;
@@ -144,7 +135,10 @@ export function VideoPlayer({
         muted={autoPlay}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
-        onLoadedData={() => setIsReady(true)}
+        onLoadedData={() => {
+          setHadError(false);
+          setIsReady(true);
+        }}
         onLoadedMetadata={() => {
           const v = videoRef.current;
           if (!v) return;

@@ -33,15 +33,21 @@ export const SparklesCore = ({
   density = 100,
 }: SparklesProps) => {
   const id = useId();
-  
+
+  const seeded = (seed: number) => {
+    const x = Math.sin(seed * 9999.123) * 43758.5453;
+    return x - Math.floor(x);
+  };
+
   const sparkles = useMemo(() => {
     return Array.from({ length: density }, (_, i) => ({
       id: i,
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      size: Math.random() * (size - (minSize ?? 0.4)) + (minSize ?? 0.4),
-      duration: Math.random() * 2 + 1,
-      delay: Math.random() * 2,
+      x: seeded(i + 1) * 100,
+      y: seeded(i + 101) * 100,
+      size:
+        seeded(i + 201) * (size - (minSize ?? 0.4)) + (minSize ?? 0.4),
+      duration: seeded(i + 301) * 2 + 1,
+      delay: seeded(i + 401) * 2,
     }));
   }, [density, size, minSize]);
 

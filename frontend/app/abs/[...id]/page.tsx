@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useCallback, useRef, use } from "react";
+import { useEffect, useState, useCallback, useRef, use, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CardStack } from "@/components/CardStack";
 import type { ScrollySectionModel } from "@/components/ScrollySection";
@@ -21,7 +21,7 @@ import {
 const DEMO_DURATION_MS = 5000;
 const DEMO_TICK_MS = 50;
 const DEMO_STEPS = [
-  { label: "Fetching paper from arXiv", at: 0 },
+  { label: "Fetching paper from preprint server", at: 0 },
   { label: "Parsing sections and equations", at: 0.2 },
   { label: "Analyzing concepts for visualization", at: 0.4 },
   { label: "Generating animations", at: 0.6 },
@@ -58,8 +58,6 @@ export default function PaperPage({
 }) {
   const resolvedParams = use(params);
   const arxivId = normalizeArxivId(resolvedParams.id);
-  const absUrl = arxivId ? `https://arxiv.org/abs/${arxivId}` : "https://arxiv.org";
-  const pdfUrl = arxivId ? `https://arxiv.org/pdf/${arxivId}.pdf` : "https://arxiv.org";
 
   const [state, setState] = useState<PageState>({ type: "loading" });
   const [jobId, setJobId] = useState<string | null>(null);
@@ -120,11 +118,19 @@ export default function PaperPage({
     }
   }, [arxivId]);
 
+  // Best-effort source detection from the paper ID in the URL
+  const paperSource = useMemo(() => {
+    if (!arxivId) return undefined;
+    if (/^\d{4}\.\d{4,5}/.test(arxivId) || /^[a-z-]+\/\d{7}/.test(arxivId)) return "arxiv";
+    if (arxivId.startsWith("10.")) return undefined; // Let backend auto-detect
+    return undefined;
+  }, [arxivId]);
+
   const startProcessing = useCallback(async () => {
     if (!arxivId) return;
 
     try {
-      const response = await processArxivPaper(arxivId);
+      const response = await processArxivPaper(arxivId, paperSource);
       setJobId(response.job_id);
       setState({
         type: "processing",
@@ -144,13 +150,15 @@ export default function PaperPage({
         message: err instanceof Error ? err.message : "Failed to start processing",
       });
     }
-  }, [arxivId]);
+  }, [arxivId, paperSource]);
 
   // Demo simulation: animate progress 0→100% over 5 seconds
+  const processingSectionsTotal =
+    state.type === "processing" ? state.status.sections_total : 0;
   useEffect(() => {
     if (state.type !== "processing" || !demoSimRunning.current) return;
 
-    const totalSections = state.status.sections_total;
+    const totalSections = processingSectionsTotal;
     const startTime = Date.now();
     const timer = setInterval(async () => {
       const elapsed = Date.now() - startTime;
@@ -203,7 +211,7 @@ export default function PaperPage({
       clearInterval(timer);
       demoSimRunning.current = false;
     };
-  }, [state.type, arxivId]);
+  }, [state.type, processingSectionsTotal, arxivId]);
 
   // Real API polling (non-demo papers)
   useEffect(() => {
@@ -340,7 +348,6 @@ export default function PaperPage({
               {state.type === "ready" && (
                 <ReadyState
                   paper={state.paper}
-                  absUrl={absUrl}
                   onProgressChange={onProgressChange}
                 />
               )}
@@ -352,16 +359,34 @@ export default function PaperPage({
   );
 }
 
+/** Derive the canonical source URL from the paper's pdf_url or source field. */
+function buildSourceUrl(paper: Paper): { url: string; label: string } {
+  const src = paper.source;
+  const pdfUrl = paper.pdf_url || "";
+  if (src === "biorxiv" || pdfUrl.includes("biorxiv.org")) {
+    // e.g. https://www.biorxiv.org/content/10.1101/2024.02.20.707059v1.full.pdf
+    //   -> https://www.biorxiv.org/content/10.1101/2024.02.20.707059
+    const match = pdfUrl.match(/biorxiv\.org\/content\/([^.]+(?:\.\d+)*)/);
+    const doi = match?.[1] ?? paper.paper_id;
+    return { url: `https://www.biorxiv.org/content/${doi}`, label: "View on bioRxiv" };
+  }
+  if (src === "medrxiv" || pdfUrl.includes("medrxiv.org")) {
+    const match = pdfUrl.match(/medrxiv\.org\/content\/([^.]+(?:\.\d+)*)/);
+    const doi = match?.[1] ?? paper.paper_id;
+    return { url: `https://www.medrxiv.org/content/${doi}`, label: "View on medRxiv" };
+  }
+  return { url: `https://arxiv.org/abs/${paper.paper_id}`, label: "View on arXiv" };
+}
+
 // === Scrollytelling Ready State ===
 function ReadyState({
   paper,
-  absUrl,
   onProgressChange,
 }: {
   paper: Paper;
-  absUrl: string;
   onProgressChange: (progress: number) => void;
 }) {
+  const sourceLink = buildSourceUrl(paper);
   const scrollySections: ScrollySectionModel[] = [...paper.sections]
     .sort((a, b) => a.order_index - b.order_index)
     .map((s) => ({
@@ -458,12 +483,12 @@ function ReadyState({
         {/* Footer links */}
         <div className="mt-8 mb-16 flex items-center justify-center gap-4 text-sm">
           <a
-            href={absUrl}
+            href={sourceLink.url}
             target="_blank"
             rel="noreferrer"
             className="text-white/30 hover:text-white/60 transition-colors"
           >
-            View on arXiv
+            {sourceLink.label}
           </a>
           <span className="w-1 h-1 rounded-full bg-white/20" />
           <Link href="/" className="text-white/30 hover:text-white/60 transition-colors">
@@ -568,7 +593,7 @@ function ProcessingState({ status }: { status: ProcessingStatus }) {
   const progressPercent = Math.round(status.progress * 100);
 
   const steps = [
-    { label: "Fetching paper from arXiv", threshold: 10, icon: "\u222B" },
+    { label: "Fetching paper from preprint server", threshold: 10, icon: "\u222B" },
     { label: "Parsing sections and content", threshold: 30, icon: "\u2202" },
     { label: "Analyzing concepts for visualization", threshold: 50, icon: "\u2207" },
     { label: "Generating animations", threshold: 70, icon: "\u03BB" },

@@ -59,12 +59,12 @@ class ProgressBar:
         logger.info(f"  [{self.name}] {bar} {percent_str} ({self.current}/{self.total}){eta_str}")
 
 
-async def process_paper_job(job_id: str, arxiv_id: str):
+async def process_paper_job(job_id: str, arxiv_id: str, source: str | None = None):
     """
     Main job processing function. Called as a background task.
 
     Pipeline:
-    1. Ingest paper from arXiv (real fetch + parse)
+    1. Ingest paper from the preprint server (arXiv, bioRxiv, or medRxiv)
     2. Store paper and sections in database
     3. Pick visualizations for sections
     4. Render all visualizations
@@ -72,19 +72,19 @@ async def process_paper_job(job_id: str, arxiv_id: str):
     """
     logger.info("=" * 60)
     logger.info(f"STARTING JOB: {job_id}")
-    logger.info(f"ArXiv ID: {arxiv_id}")
+    logger.info(f"Paper ID: {arxiv_id}  source={source or 'auto'}")
     logger.info("=" * 60)
 
     async with async_session_maker() as db:
         try:
-            # Step 1: Ingest paper from arXiv
-            logger.info("STEP 1: Ingesting paper from arXiv")
+            # Step 1: Ingest paper
+            logger.info("STEP 1: Ingesting paper")
             logger.info("-" * 60)
 
             await queries.update_job_status(
                 db, job_id,
                 status="processing",
-                current_step="Fetching paper from arXiv",
+                current_step="Fetching paper metadata",
                 progress=0.10
             )
 
@@ -92,10 +92,10 @@ async def process_paper_job(job_id: str, arxiv_id: str):
             if paper_exists:
                 logger.info(f"Paper {arxiv_id} already exists in database, skipping ingestion")
             else:
-                logger.info(f"Paper {arxiv_id} not found, fetching from arXiv...")
+                logger.info(f"Paper {arxiv_id} not found in DB, fetching from preprint server...")
 
             if not paper_exists:
-                await _ingest_and_store_paper(db, job_id, arxiv_id)
+                await _ingest_and_store_paper(db, job_id, arxiv_id, source=source)
             else:
                 # Paper already exists, just link the job to it
                 logger.info("Linking job to existing paper...")
@@ -291,19 +291,20 @@ async def process_paper_job(job_id: str, arxiv_id: str):
             raise
 
 
-async def _ingest_and_store_paper(db, job_id: str, arxiv_id: str):
+async def _ingest_and_store_paper(db, job_id: str, arxiv_id: str, source: str | None = None):
     """
-    Ingest a real paper from arXiv and store it in the database.
+    Ingest a paper from the appropriate preprint server and store it in the database.
     """
     from ingestion import ingest_paper
 
+    server_label = source or "preprint server"
     await queries.update_job_status(
         db, job_id,
-        current_step="Fetching paper metadata from arXiv",
+        current_step=f"Fetching paper metadata from {server_label}",
         progress=0.15
     )
 
-    structured_paper = await ingest_paper(arxiv_id)
+    structured_paper = await ingest_paper(arxiv_id, source=source)
     meta = structured_paper.meta
 
     await queries.update_job_status(
@@ -367,14 +368,35 @@ async def _ingest_and_store_paper(db, job_id: str, arxiv_id: str):
     logger.info(f"Stored paper '{meta.title}' with {stored_count}/{len(structured_paper.sections)} sections")
 
 
+def _fallback_pdf_url(paper_id: str) -> str:
+    """Build a fallback PDF URL from the paper ID when none is stored."""
+    if paper_id.startswith("10.1101/") or paper_id.startswith("10.64898/"):
+        return f"https://www.biorxiv.org/content/{paper_id}v1.full.pdf"
+    return f"https://arxiv.org/pdf/{paper_id}"
+
+
+def _infer_source_from_pdf_url(pdf_url: str) -> str:
+    """Infer the preprint server from the stored PDF URL."""
+    if not pdf_url:
+        return "arxiv"
+    if "biorxiv.org" in pdf_url:
+        return "biorxiv"
+    if "medrxiv.org" in pdf_url:
+        return "medrxiv"
+    return "arxiv"
+
+
 def _build_structured_paper_from_db(db_paper, db_sections: list[Section]) -> StructuredPaper:
     """Reconstruct StructuredPaper from database rows for generator pipeline input."""
+    pdf_url = db_paper.pdf_url or _fallback_pdf_url(db_paper.id)
+    source = _infer_source_from_pdf_url(pdf_url)
     meta = ArxivPaperMeta(
         arxiv_id=db_paper.id,
+        source=source,  # type: ignore[arg-type]
         title=db_paper.title,
         authors=db_paper.authors or [],
         abstract=db_paper.abstract or "",
-        pdf_url=db_paper.pdf_url or f"https://arxiv.org/pdf/{db_paper.id}",
+        pdf_url=pdf_url,
         html_url=db_paper.html_url,
     )
 

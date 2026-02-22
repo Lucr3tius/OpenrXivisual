@@ -9,7 +9,8 @@ export type ProcessingStatus = {
 };
 
 export type Paper = {
-  paper_id: string; // e.g. "1706.03762"
+  paper_id: string; // arXiv ID or DOI
+  source?: string;  // "arxiv" | "biorxiv" | "medrxiv"
   title: string;
   authors: string[];
   abstract: string;

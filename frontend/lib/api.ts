@@ -4,7 +4,7 @@
  * Supports toggling between mock data and real API via environment variable.
  */
 
-import { DEMO_PAPER_IDS, getDemoPaper, MOCK_PAPER, MOCK_STATUS } from "./mock-data";
+import { getDemoPaper, MOCK_PAPER, MOCK_STATUS } from "./mock-data";
 import type { Paper, ProcessingStatus, Section } from "./types";
 
 // Toggle between mock and real API
@@ -57,7 +57,8 @@ export interface VisualizationResponse {
 }
 
 export interface PaperResponse {
-  id: string;
+  paper_id: string;
+  source?: string; // "arxiv" | "biorxiv" | "medrxiv"
   title: string;
   authors: string[];
   abstract: string;
@@ -91,10 +92,10 @@ function resolveVideoUrl(url: string | undefined | null): string | undefined {
 // === API Functions ===
 
 /**
- * Start processing an arXiv paper.
+ * Start processing a preprint paper (arXiv, bioRxiv, or medRxiv).
  * Returns a job_id that can be polled for status.
  */
-export async function processArxivPaper(arxivId: string): Promise<ProcessResponse> {
+export async function processArxivPaper(arxivId: string, source?: string): Promise<ProcessResponse> {
   if (USE_MOCK) {
     // Simulate API delay
     await new Promise((r) => setTimeout(r, 500));
@@ -106,10 +107,13 @@ export async function processArxivPaper(arxivId: string): Promise<ProcessRespons
     };
   }
 
+  const body: Record<string, string> = { arxiv_id: arxivId };
+  if (source && source !== "rxiv") body.source = source;
+
   const res = await fetch(`${API_BASE}/api/process`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ arxiv_id: arxivId }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
@@ -209,7 +213,8 @@ export async function getPaper(arxivId: string): Promise<Paper | null> {
   });
 
   return {
-    paper_id: data.id,
+    paper_id: data.paper_id,
+    source: data.source || "arxiv",
     title: data.title,
     authors: data.authors,
     abstract: data.abstract,

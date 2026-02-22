@@ -26,6 +26,11 @@ export const BackgroundBeams = ({ className }: { className?: string }) => {
     "M-254 -333C-254 -333 -186 72 278 199C742 326 810 731 810 731",
     "M-247 -341C-247 -341 -179 64 285 191C749 318 817 723 817 723",
   ];
+
+  const y2ForIndex = (index: number) => `${93 + ((index * 7) % 8)}%`;
+  const durationForIndex = (index: number) => 10 + ((index * 3) % 10);
+  const delayForIndex = (index: number) => (index * 1.7) % 10;
+
   return (
     <div
       className={cn(
@@ -65,13 +70,13 @@ export const BackgroundBeams = ({ className }: { className?: string }) => {
                 x1: ["0%", "100%"],
                 x2: ["0%", "95%"],
                 y1: ["0%", "100%"],
-                y2: ["0%", `${93 + Math.random() * 8}%`],
+                y2: ["0%", y2ForIndex(index)],
               }}
               transition={{
-                duration: Math.random() * 10 + 10,
+                duration: durationForIndex(index),
                 ease: "easeInOut",
                 repeat: Infinity,
-                delay: Math.random() * 10,
+                delay: delayForIndex(index),
               }}
             >
               <stop stopColor="#18CCFC" stopOpacity="0"></stop>
@@ -90,7 +95,10 @@ const motion = {
   path: ({ d, stroke, strokeOpacity, strokeWidth }: { d: string; stroke: string; strokeOpacity: string; strokeWidth: string }) => (
     <path d={d} stroke={stroke} strokeOpacity={strokeOpacity} strokeWidth={strokeWidth} />
   ),
-  linearGradient: ({ id, children, initial, animate, transition }: { id: string; children: React.ReactNode; initial: object; animate: object; transition: object }) => (
-    <linearGradient id={id}>{children}</linearGradient>
-  ),
+  linearGradient: ({ id, children, initial, animate, transition }: { id: string; children: React.ReactNode; initial: object; animate: object; transition: object }) => {
+    void initial;
+    void animate;
+    void transition;
+    return <linearGradient id={id}>{children}</linearGradient>;
+  },
 };

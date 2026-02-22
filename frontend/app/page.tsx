@@ -8,39 +8,79 @@ import { MosaicBackground } from "@/components/ui/mosaic-background";
 import { ShardField } from "@/components/ui/glass-shard";
 import { GlassCard } from "@/components/ui/glass-card";
 
-function extractArxivId(inputRaw: string): string | null {
+/**
+ * Extract a normalized paper ID from any supported input:
+ * - arXiv IDs:  "1706.03762", "cs/0123456", full arxiv.org URLs
+ * - bioRxiv DOIs: "10.1101/2024.02.20.707059", biorxiv.org URLs
+ * - medRxiv DOIs: "10.1101/2024.03.15.24304018", medrxiv.org URLs
+ *
+ * Returns { id, source } or null if the input is unrecognized.
+ */
+function extractPaperId(inputRaw: string): { id: string; source: string } | null {
   const input = inputRaw.trim();
   if (!input) return null;
 
-  const directNew = input.match(/^\d{4}\.\d{4,5}(v\d+)?$/i);
-  if (directNew) return directNew[0];
+  // --- arXiv ---
+  // Direct new format: NNNN.NNNNN[vN]
+  const arXivNew = input.match(/^(\d{4}\.\d{4,5})(v\d+)?$/i);
+  if (arXivNew) return { id: arXivNew[1], source: "arxiv" };
 
-  const directOld = input.match(/^[a-z-]+(\.[a-z]{2})?\/\d{7}(v\d+)?$/i);
-  if (directOld) return directOld[0];
+  // Direct old format: category[.XX]/NNNNNNN[vN]
+  const arXivOld = input.match(/^([a-z-]+(?:\.[a-z]{2})?\/\d{7})(v\d+)?$/i);
+  if (arXivOld) return { id: arXivOld[1], source: "arxiv" };
 
-  const urlAbs = input.match(/arxiv\.org\/abs\/([^?\s#]+)/i);
-  if (urlAbs?.[1]) return decodeURIComponent(urlAbs[1]).replace(/\/$/, "");
+  // arxiv.org URL (abs or pdf)
+  const arXivAbs = input.match(/arxiv\.org\/(?:abs|pdf)\/([^?\s#]+?)(?:\.pdf)?(?:[?#].*)?$/i);
+  if (arXivAbs?.[1]) return { id: decodeURIComponent(arXivAbs[1]).replace(/\/$/, ""), source: "arxiv" };
 
-  const urlPdf = input.match(/arxiv\.org\/pdf\/([^?\s#]+?)(?:\.pdf)?$/i);
-  if (urlPdf?.[1]) return decodeURIComponent(urlPdf[1]).replace(/\/$/, "");
+  // --- bioRxiv ---
+  // Full biorxiv.org URL: /content/10.1101/...
+  const bioRxivUrl = input.match(/biorxiv\.org\/content\/(10\.\d{4,}\/[^?\s#v]+)(v\d+)?/i);
+  if (bioRxivUrl?.[1]) return { id: bioRxivUrl[1], source: "biorxiv" };
+
+  // --- medRxiv ---
+  // Full medrxiv.org URL: /content/10.1101/...
+  const medRxivUrl = input.match(/medrxiv\.org\/content\/(10\.\d{4,}\/[^?\s#v]+)(v\d+)?/i);
+  if (medRxivUrl?.[1]) return { id: medRxivUrl[1], source: "medrxiv" };
+
+  // --- Bare DOI (10.1101/...) — could be bioRxiv or medRxiv; backend auto-detects ---
+  const bareDoiNew = input.match(/^(10\.\d{4,}\/\d{4}\.\d{2}\.\d{2}\.\d+)(v\d+)?$/i);
+  if (bareDoiNew?.[1]) return { id: bareDoiNew[1], source: "rxiv" };
+
+  // Generic DOI starting with 10.
+  const bareDoi = input.match(/^(10\.\d{4,}\/.+?)(?:v\d+)?$/i);
+  if (bareDoi?.[1] && !bareDoi[1].includes(" ")) return { id: bareDoi[1], source: "rxiv" };
 
   return null;
 }
 
 const placeholders = [
-  "Paste an arXiv URL or ID...",
+  "Paste an arXiv, bioRxiv, or medRxiv URL or ID...",
   "1706.03762 (Attention Is All You Need)",
   "https://arxiv.org/abs/2005.14165",
-  "2303.08774 (GPT-4 Technical Report)",
-  "1810.04805 (BERT)",
+  "https://www.biorxiv.org/content/10.1101/2024.02.20.707059",
+  "10.1101/2024.03.15.24304018 (medRxiv DOI)",
 ];
+
+/** Detect the current domain's preprint focus from window.location.hostname */
+function useSiteConfig() {
+  return useMemo(() => {
+    if (typeof window === "undefined") return { source: "all", label: "arXiv / bioRxiv / medRxiv" };
+    const host = window.location.hostname;
+    if (host.includes("biorxivisual")) return { source: "biorxiv", label: "bioRxiv" };
+    if (host.includes("medrxivisual")) return { source: "medrxiv", label: "medRxiv" };
+    return { source: "all", label: "arXiv / bioRxiv / medRxiv" };
+  }, []);
+}
 
 export default function Home() {
   const router = useRouter();
   const [value, setValue] = useState("");
   const [touched, setTouched] = useState(false);
+  const site = useSiteConfig();
 
-  const parsedId = useMemo(() => extractArxivId(value), [value]);
+  const parsed = useMemo(() => extractPaperId(value), [value]);
+  const parsedId = parsed?.id ?? null;
   const canSubmit = Boolean(parsedId);
 
   function onSubmit(e: React.FormEvent) {
@@ -73,7 +113,7 @@ export default function Home() {
               transition={{ duration: 0.6, delay: 0.5 }}
               className="text-lg sm:text-xl text-white/40 max-w-2xl mx-auto leading-relaxed font-light"
             >
-              Paste any arXiv paper. Watch as it turns complex papers
+              Paste any {site.label} preprint. Watch as it turns complex papers
               into digestible and <span className="text-white/60 font-medium">visually</span> appealing video explanations.
             </motion.p>
 
@@ -115,7 +155,7 @@ export default function Home() {
                 {parsedId ? (
                   <span className="text-[#7dd19b] flex items-center justify-center gap-2">
                     <span className="text-lg">✓</span>
-                    <span>Detected:{" "}</span>
+                    <span>Detected{parsed?.source && parsed.source !== "rxiv" ? ` (${parsed.source})` : ""}:{" "}</span>
                     <span className="font-mono bg-[#7dd19b]/10 px-2 py-0.5 rounded">{parsedId}</span>
                   </span>
                 ) : touched && value ? (
@@ -134,11 +174,24 @@ export default function Home() {
               className="mt-8 flex flex-wrap items-center justify-center gap-3"
             >
               <span className="text-sm text-white/30">Try these:</span>
-              {[
-                { id: "1706.03762", label: "Transformers", icon: "◇" },
-                { id: "2005.14165", label: "GPT-3", icon: "◈" },
-                { id: "2303.08774", label: "GPT-4", icon: "◆" },
-              ].map((example) => (
+              {(site.source === "biorxiv"
+                ? [
+                    { id: "10.1101/2024.02.20.707059", label: "COVID-19", icon: "◇" },
+                    { id: "10.1101/2023.05.15.550578", label: "Neuroscience", icon: "◈" },
+                    { id: "10.1101/2024.01.12.575480", label: "Genomics", icon: "◆" },
+                  ]
+                : site.source === "medrxiv"
+                ? [
+                    { id: "10.1101/2024.03.15.24304018", label: "Public Health", icon: "◇" },
+                    { id: "10.1101/2024.01.08.21245332", label: "Epidemiology", icon: "◈" },
+                    { id: "10.1101/2024.02.10.24302589", label: "Clinical Trial", icon: "◆" },
+                  ]
+                : [
+                    { id: "1706.03762", label: "Transformers (arXiv)", icon: "◇" },
+                    { id: "10.1101/2024.02.20.707059", label: "bioRxiv", icon: "◈" },
+                    { id: "2303.08774", label: "GPT-4 (arXiv)", icon: "◆" },
+                  ]
+              ).map((example) => (
                 <motion.button
                   key={example.id}
                   whileHover={{ scale: 1.05, y: -2 }}
@@ -172,16 +225,12 @@ export default function Home() {
               </div>
               <div>
                 <h3 className="font-semibold text-white/90">Pro Tip</h3>
-                <p className="text-sm text-white/40">One edit turns arXiv into arXivisual</p>
+                <p className="text-sm text-white/40">One edit turns any preprint into a visual</p>
               </div>
             </div>
             <div className="space-y-3 text-sm text-white/45 leading-relaxed">
               <p>
-                If your link starts with{" "}
-                <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
-                  arxiv.org
-                </code>
-                , just add{" "}
+                Add{" "}
                 <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
                   isual
                 </code>
@@ -189,15 +238,20 @@ export default function Home() {
                 <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
                   arxiv
                 </code>
-                .
+                {" "}or{" "}
+                <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
+                  biorxiv
+                </code>
+                {" "}or{" "}
+                <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
+                  medrxiv
+                </code>
+                {" "}in any preprint URL.
               </p>
-              <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3">
-                <p className="font-mono text-xs text-white/50">
-                  Before: arxiv.org/abs/1706.03762
-                </p>
-                <p className="font-mono text-xs text-white/70 mt-1">
-                  After:&nbsp;&nbsp;arxivisual.org/abs/1706.03762
-                </p>
+              <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3 space-y-1">
+                <p className="font-mono text-xs text-white/50">arxiv.org → <span className="text-white/70">arxivisual.org</span></p>
+                <p className="font-mono text-xs text-white/50">biorxiv.org → <span className="text-white/70">biorxivisual.org</span></p>
+                <p className="font-mono text-xs text-white/50">medrxiv.org → <span className="text-white/70">medrxivisual.org</span></p>
               </div>
             </div>
           </GlassCard>
@@ -230,19 +284,27 @@ export default function Home() {
             </a>
             <a
               className="rounded-lg px-3 py-1.5 text-white/40 border border-white/[0.06] transition hover:bg-white/[0.04] hover:text-white/60 hover:border-white/[0.12]"
+              href="https://www.biorxiv.org"
+              target="_blank"
+              rel="noreferrer"
+            >
+              bioRxiv
+            </a>
+            <a
+              className="rounded-lg px-3 py-1.5 text-white/40 border border-white/[0.06] transition hover:bg-white/[0.04] hover:text-white/60 hover:border-white/[0.12]"
+              href="https://www.medrxiv.org"
+              target="_blank"
+              rel="noreferrer"
+            >
+              medRxiv
+            </a>
+            <a
+              className="rounded-lg px-3 py-1.5 text-white/40 border border-white/[0.06] transition hover:bg-white/[0.04] hover:text-white/60 hover:border-white/[0.12]"
               href="https://www.manim.community/"
               target="_blank"
               rel="noreferrer"
             >
               Manim
-            </a>
-            <a
-              className="rounded-lg px-3 py-1.5 text-white/40 border border-white/[0.06] transition hover:bg-white/[0.04] hover:text-white/60 hover:border-white/[0.12]"
-              href="https://www.3blue1brown.com/"
-              target="_blank"
-              rel="noreferrer"
-            >
-              3Blue1Brown
             </a>
           </div>
         </motion.footer>

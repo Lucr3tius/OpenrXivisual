@@ -105,7 +105,10 @@ export function usePaperData(
   // Auto-fetch on mount if enabled
   useEffect(() => {
     if (autoFetch && arxivId) {
-      fetchPaper();
+      const timer = setTimeout(() => {
+        void fetchPaper();
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [autoFetch, arxivId, fetchPaper]);
 
@@ -138,14 +141,8 @@ export function usePaperWithSections(arxivId: string | null | undefined) {
   const paperData = usePaperData(arxivId);
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
 
-  // Initialize active section when paper loads
-  useEffect(() => {
-    if (paperData.paper && paperData.paper.sections.length > 0) {
-      setActiveSectionId(paperData.paper.sections[0].id);
-    }
-  }, [paperData.paper]);
-
   const sections = paperData.paper?.sections ?? [];
+  const effectiveActiveSectionId = activeSectionId ?? sections[0]?.id ?? null;
 
   const scrollToSection = useCallback((sectionId: string) => {
     const el = document.querySelector(`[data-section-id="${sectionId}"]`);
@@ -167,7 +164,7 @@ export function usePaperWithSections(arxivId: string | null | undefined) {
   return {
     ...paperData,
     sections,
-    activeSectionId,
+    activeSectionId: effectiveActiveSectionId,
     setActiveSectionId,
     scrollToSection,
     handleSectionActiveChange,

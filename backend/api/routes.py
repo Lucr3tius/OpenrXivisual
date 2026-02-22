@@ -1,12 +1,13 @@
 """
-FastAPI routes for the ArXiviz API.
+FastAPI routes for the OpenrXivisual API.
 
-Now using SQLite database and local Manim rendering.
+Supports arXiv, bioRxiv, and medRxiv preprints.
 """
 
 import os
+import re
 import uuid
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,8 +34,30 @@ from db.connection import get_db
 from db import queries
 from rendering import process_visualization, get_video_path, get_video_url, extract_scene_name
 from jobs import process_paper_job
+from utils.domain_utils import get_paper_pdf_url, get_branding, validate_server
+from middleware.rate_limit import check_rate_limit
 
 router = APIRouter(prefix="/api")
+
+
+# === Helpers ===
+
+def _infer_source(pdf_url: str) -> str:
+    """Infer the preprint server from the stored PDF URL."""
+    if not pdf_url:
+        return "arxiv"
+    if "biorxiv.org" in pdf_url:
+        return "biorxiv"
+    if "medrxiv.org" in pdf_url:
+        return "medrxiv"
+    return "arxiv"
+
+
+def _fallback_pdf_url(paper_id: str) -> str:
+    """Build a fallback PDF URL when none is stored (should rarely trigger)."""
+    if paper_id.startswith("10.1101/") or paper_id.startswith("10.64898/"):
+        return f"https://www.biorxiv.org/content/{paper_id}v1.full.pdf"
+    return f"https://arxiv.org/pdf/{paper_id}"
 
 
 # === Endpoints ===
@@ -42,25 +65,37 @@ router = APIRouter(prefix="/api")
 @router.post("/process", response_model=ProcessResponse)
 async def start_processing(
     request: ProcessRequest,
+    http_request: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Start processing an arXiv paper.
+    Start processing a preprint paper (arXiv, bioRxiv, or medRxiv).
 
     Returns immediately with a job_id. Poll /api/status/{job_id} for progress.
     """
+    # Enforce domain-based server restrictions (e.g. biorxivisual.org only accepts bioRxiv)
+    host = http_request.headers.get("host", "")
+    is_valid, error_msg = validate_server(host, request.arxiv_id, source=request.source)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error_msg)
+
+    # Rate limiting
+    check_rate_limit(http_request)
+
     # Create job in database
     job_id = await queries.create_job(db, request.arxiv_id)
 
-    # Start background processing
-    background_tasks.add_task(process_paper_job, job_id, request.arxiv_id)
+    # Start background processing (pass optional source hint)
+    background_tasks.add_task(
+        process_paper_job, job_id, request.arxiv_id, request.source
+    )
 
     return ProcessResponse(
         job_id=job_id,
         arxiv_id=request.arxiv_id,
         status=JobStatus.queued,
-        message="Processing started. Poll /api/status/{job_id} for updates."
+        message="Processing started. Poll /api/status/{job_id} for updates.",
     )
 
 
@@ -116,15 +151,17 @@ async def get_status(job_id: str, db: AsyncSession = Depends(get_db)):
     )
 
 
-@router.get("/paper/{arxiv_id}", response_model=PaperResponse)
-async def get_paper(arxiv_id: str, db: AsyncSession = Depends(get_db)):
+@router.get("/paper/{paper_id:path}", response_model=PaperResponse)
+async def get_paper(paper_id: str, db: AsyncSession = Depends(get_db)):
     """
     Get a processed paper with all sections and visualizations.
 
+    Accepts arXiv IDs (e.g. "1706.03762") or DOIs (e.g. "10.1101/2024.02.20.707059").
     Returns 404 if the paper hasn't been processed yet.
     """
-    # Handle version suffix (e.g., "1706.03762v1" -> "1706.03762")
-    base_id = arxiv_id.split("v")[0] if "v" in arxiv_id else arxiv_id
+    # Strip version suffix from arXiv IDs (e.g. "1706.03762v1" -> "1706.03762")
+    # For DOIs the split("v") is safe: "10.1101/2024.02.20.707059v1" -> "10.1101/2024.02.20.707059"
+    base_id = re.sub(r'v\d+$', '', paper_id)
 
     paper = await queries.get_paper(db, base_id)
 
@@ -132,30 +169,30 @@ async def get_paper(arxiv_id: str, db: AsyncSession = Depends(get_db)):
         # Convert database models to response schemas
         sections = sorted(paper.sections, key=lambda s: s.order_index)
 
-        # Build section_id -> video_url lookup from visualizations
-        # Prioritize complete videos and take the first complete one for each section
-        section_video_map = {}
-        section_status_map = {}  # Track status of mapped videos
+        # Build section_id -> video_url lookup; prefer complete videos
+        section_video_map: dict = {}
+        section_status_map: dict = {}
         for v in paper.visualizations:
             if v.video_url and v.section_id:
                 existing_status = section_status_map.get(v.section_id)
-                # Only update if:
-                # 1. We don't have a video for this section yet, OR
-                # 2. This video is complete and the existing one is not complete
                 if v.section_id not in section_video_map:
                     section_video_map[v.section_id] = v.video_url
                     section_status_map[v.section_id] = v.status
                 elif v.status == "complete" and existing_status != "complete":
-                    # Prefer complete videos over failed/pending/rendering
                     section_video_map[v.section_id] = v.video_url
                     section_status_map[v.section_id] = v.status
 
+        # Infer source from stored pdf_url (avoids a schema migration)
+        pdf_url = paper.pdf_url or _fallback_pdf_url(paper.id)
+        source = _infer_source(pdf_url)
+
         return PaperResponse(
             paper_id=paper.id,
+            source=source,
             title=paper.title,
             authors=paper.authors or [],
             abstract=paper.abstract or "",
-            pdf_url=paper.pdf_url or f"https://arxiv.org/pdf/{paper.id}",
+            pdf_url=pdf_url,
             html_url=paper.html_url,
             sections=[
                 SectionResponse(
@@ -185,7 +222,7 @@ async def get_paper(arxiv_id: str, db: AsyncSession = Depends(get_db)):
 
     raise HTTPException(
         status_code=404,
-        detail=f"Paper '{arxiv_id}' not found. Try processing it first with POST /api/process"
+        detail=f"Paper '{paper_id}' not found. Try processing it first with POST /api/process",
     )
 
 

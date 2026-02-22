@@ -1,21 +1,23 @@
 """Paper data models used across ingestion and generation."""
 
 from datetime import datetime
+from typing import Literal
 from pydantic import BaseModel, Field
 
 
 class ArxivPaperMeta(BaseModel):
-    """Metadata about an arXiv paper."""
+    """Metadata about a preprint paper (arXiv, bioRxiv, or medRxiv)."""
 
-    arxiv_id: str = Field(..., description="arXiv identifier, e.g., '1706.03762'")
+    arxiv_id: str = Field(..., description="Paper identifier: arXiv ID (e.g. '1706.03762') or DOI (e.g. '10.1101/2024.02.20.707059')")
+    source: Literal["arxiv", "biorxiv", "medrxiv"] = Field("arxiv", description="Preprint server source")
     title: str = Field(..., description="Paper title")
     authors: list[str] = Field(default_factory=list, description="List of author names")
     abstract: str = Field(..., description="Paper abstract")
     published: datetime | None = Field(None, description="Publication date")
     updated: datetime | None = Field(None, description="Last update date")
-    categories: list[str] = Field(default_factory=list, description="arXiv categories, e.g., ['cs.CL', 'cs.LG']")
+    categories: list[str] = Field(default_factory=list, description="Subject categories")
     pdf_url: str = Field(..., description="Direct PDF download URL")
-    html_url: str | None = Field(None, description="ar5iv HTML URL if available")
+    html_url: str | None = Field(None, description="HTML version URL if available")
 
 
 class Equation(BaseModel):

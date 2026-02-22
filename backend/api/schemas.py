@@ -34,8 +34,17 @@ class ProcessRequest(BaseModel):
     """Request body for POST /api/process."""
     arxiv_id: str = Field(
         ...,
-        description="arXiv paper ID (e.g., '1706.03762' or '1706.03762v1')",
-        examples=["1706.03762", "2301.07041v2"]
+        description=(
+            "Paper identifier: arXiv ID (e.g. '1706.03762'), "
+            "bioRxiv/medRxiv DOI (e.g. '10.1101/2024.02.20.707059'), "
+            "or a full preprint URL."
+        ),
+        examples=["1706.03762", "10.1101/2024.02.20.707059"],
+    )
+    source: Optional[str] = Field(
+        None,
+        description="Preprint server: 'arxiv', 'biorxiv', or 'medrxiv'. Auto-detected when omitted.",
+        examples=["arxiv", "biorxiv", "medrxiv"],
     )
 
 
@@ -116,8 +125,9 @@ class VisualizationResponse(BaseModel):
 
 
 class PaperResponse(BaseModel):
-    """Response for GET /api/paper/{arxiv_id}."""
-    paper_id: str = Field(..., description="arXiv paper ID")
+    """Response for GET /api/paper/{paper_id}."""
+    paper_id: str = Field(..., description="Paper ID (arXiv ID or DOI)")
+    source: str = Field("arxiv", description="Preprint server: 'arxiv', 'biorxiv', or 'medrxiv'")
     title: str
     authors: list[str]
     abstract: str
