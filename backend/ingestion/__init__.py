@@ -16,6 +16,7 @@ Output goes to the AI visualization pipeline.
 """
 
 import logging
+import os
 import re
 from typing import Optional
 
@@ -44,6 +45,7 @@ logger = logging.getLogger(__name__)
 # Simple in-memory cache for development
 # In production, use Redis or database
 _paper_cache: dict[str, StructuredPaper] = {}
+ENABLE_PAPER_CACHE = os.getenv("ENABLE_PAPER_CACHE", "false").lower() == "true"
 
 
 def detect_paper_source(paper_id: str) -> str:
@@ -106,8 +108,8 @@ async def ingest_paper(
 
     logger.info(f"Starting ingestion for paper: {paper_id} (source={source})")
 
-    # Check cache
-    if not force_refresh:
+    # Check cache (disabled by default during early product iteration)
+    if ENABLE_PAPER_CACHE and not force_refresh:
         cached = await get_cached_paper(paper_id)
         if cached:
             logger.info(f"Returning cached paper: {paper_id}")
@@ -170,8 +172,9 @@ async def ingest_paper(
         sections=sections
     )
 
-    # Step 6: Cache result
-    await cache_paper(paper)
+    # Step 6: Cache result (opt-in only)
+    if ENABLE_PAPER_CACHE:
+        await cache_paper(paper)
 
     logger.info(f"Ingestion complete for: {paper_id}")
     return paper

@@ -6,7 +6,6 @@ Handles multi-domain deployment (biorxivisual.org, medrxivisual.org, rxivisual.c
 
 import re
 from typing import Optional
-from dataclasses import dataclass
 
 
 # Domain configuration
@@ -129,6 +128,59 @@ def validate_server(
     return False, f"Papers from {server_display} are not supported on this site."
 
 
+def normalize_paper_input(paper_input: str) -> tuple[str, Optional[str]]:
+    """
+    Normalize user input to a canonical paper identifier.
+
+    Returns:
+        (paper_id, source_hint)
+        - paper_id: arXiv ID or DOI without version suffix
+        - source_hint: "arxiv", "biorxiv", "medrxiv", or None
+    """
+    raw = paper_input.strip()
+    lower = raw.lower()
+
+    # arXiv URLs: /abs/<id> or /pdf/<id>.pdf
+    arxiv_match = re.search(r'arxiv\.org/(?:abs|pdf)/([^?\s#]+?)(?:\.pdf)?(?:[?#].*)?$', raw, re.IGNORECASE)
+    if arxiv_match:
+        arxiv_id = re.sub(r'v\d+$', '', arxiv_match.group(1))
+        return arxiv_id, "arxiv"
+
+    # Direct arXiv IDs
+    if re.match(r'^\d{4}\.\d{4,5}(v\d+)?$', raw) or re.match(r'^[a-z-]+(\.[a-z]{2})?/\d{7}(v\d+)?$', raw):
+        return re.sub(r'v\d+$', '', raw), "arxiv"
+
+    # bioRxiv URL: /content/<doi>vN(.full.pdf)
+    biorxiv_match = re.search(
+        r'biorxiv\.org/content/(?P<doi>10\.\d{4,9}/[^/?#]+?)(?:v\d+)?(?:\.full\.pdf)?(?:[/?#].*)?$',
+        raw,
+        re.IGNORECASE,
+    )
+    if biorxiv_match:
+        doi = re.sub(r'v\d+$', '', biorxiv_match.group("doi"))
+        return doi, "biorxiv"
+
+    # medRxiv URL: /content/<doi>vN(.full.pdf)
+    medrxiv_match = re.search(
+        r'medrxiv\.org/content/(?P<doi>10\.\d{4,9}/[^/?#]+?)(?:v\d+)?(?:\.full\.pdf)?(?:[/?#].*)?$',
+        raw,
+        re.IGNORECASE,
+    )
+    if medrxiv_match:
+        doi = re.sub(r'v\d+$', '', medrxiv_match.group("doi"))
+        return doi, "medrxiv"
+
+    # Bare DOI
+    doi_match = re.match(r'^(10\.\d{4,9}/\S+?)(?:v\d+)?$', raw)
+    if doi_match:
+        doi = re.sub(r'v\d+$', '', doi_match.group(1))
+        source_hint = "medrxiv" if doi.startswith("10.64898/") else None
+        return doi, source_hint
+
+    # Leave unknown values untouched (validation/ingestion will handle errors)
+    return raw, None
+
+
 def get_paper_pdf_url(input_url: str) -> tuple[str, str]:
     """
     Convert any preprint URL to its direct PDF URL.
@@ -150,44 +202,41 @@ def get_paper_pdf_url(input_url: str) -> tuple[str, str]:
         arxiv_id_clean = re.sub(r'v\d+$', '', arxiv_id)
         return f"https://arxiv.org/pdf/{arxiv_id_clean}.pdf", arxiv_id_clean
     
-    # bioRxiv: /content/10.1101/ID/full.pdf
-    biorxiv_match = re.search(r'biorxiv\.org/content/([0-9.]+[a-z]\d*)v?(\d*)', input_url, re.IGNORECASE)
+    # bioRxiv: /content/10.xxxx/...
+    biorxiv_match = re.search(
+        r'biorxiv\.org/content/(10\.\d{4,9}/[^/?#]+?)(?:v(\d+))?(?:\.full\.pdf)?(?:[/?#].*)?$',
+        input_url,
+        re.IGNORECASE,
+    )
     if biorxiv_match:
-        doi = biorxiv_match.group(1)
-        version = biorxiv_match.group(2)
-        paper_id = f"10.1101/{doi}"
-        if version:
-            paper_id += f"v{version}"
-        pdf_url = f"https://www.biorxiv.org/content/{doi}"
-        if version:
-            pdf_url += f"v{version}"
-        pdf_url += ".full.pdf"
+        doi = re.sub(r'v\d+$', '', biorxiv_match.group(1))
+        version = biorxiv_match.group(2) or "1"
+        paper_id = doi
+        pdf_url = f"https://www.biorxiv.org/content/{doi}v{version}.full.pdf"
         return pdf_url, paper_id
-    
-    # medRxiv: /content/10.64898/ID/full.pdf
-    medrxiv_match = re.search(r'medrxiv\.org/content/([0-9.]+[a-z]\d*)v?(\d*)', input_url, re.IGNORECASE)
+
+    # medRxiv: /content/10.xxxx/...
+    medrxiv_match = re.search(
+        r'medrxiv\.org/content/(10\.\d{4,9}/[^/?#]+?)(?:v(\d+))?(?:\.full\.pdf)?(?:[/?#].*)?$',
+        input_url,
+        re.IGNORECASE,
+    )
     if medrxiv_match:
-        doi = medrxiv_match.group(1)
-        version = medrxiv_match.group(2)
-        paper_id = f"10.64898/{doi}"
-        if version:
-            paper_id += f"v{version}"
-        pdf_url = f"https://www.medrxiv.org/content/{doi}"
-        if version:
-            pdf_url += f"v{version}"
-        pdf_url += ".full.pdf"
+        doi = re.sub(r'v\d+$', '', medrxiv_match.group(1))
+        version = medrxiv_match.group(2) or "1"
+        paper_id = doi
+        pdf_url = f"https://www.medrxiv.org/content/{doi}v{version}.full.pdf"
         return pdf_url, paper_id
-    
+
     # Also handle bare DOI formats
-    bare_bioarxiv = re.search(r'10\.1101/([0-9.]+[a-z]\d*)', input_url)
-    if bare_bioarxiv:
-        doi = bare_bioarxiv.group(1)
-        return f"https://www.biorxiv.org/content/{doi}.full.pdf", f"10.1101/{doi}"
-    
-    bare_medrxiv = re.search(r'10\.64898/([0-9.]+[a-z]\d*)', input_url)
-    if bare_medrxiv:
-        doi = bare_medrxiv.group(1)
-        return f"https://www.medrxiv.org/content/{doi}.full.pdf", f"10.64898/{doi}"
+    bare_doi = re.search(r'(10\.\d{4,9}/\S+?)(?:v\d+)?$', input_url)
+    if bare_doi:
+        doi = re.sub(r'v\d+$', '', bare_doi.group(1))
+        if doi.startswith("10.64898/"):
+            return f"https://www.medrxiv.org/content/{doi}v1.full.pdf", doi
+        # 10.1101 can exist on bioRxiv or medRxiv; default to bioRxiv here
+        if doi.startswith("10.1101/"):
+            return f"https://www.biorxiv.org/content/{doi}v1.full.pdf", doi
     
     raise ValueError(f"Could not parse preprint URL: {input_url}")
 

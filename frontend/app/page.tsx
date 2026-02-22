@@ -160,7 +160,7 @@ export default function Home() {
                   </span>
                 ) : touched && value ? (
                   <span className="text-[#f27066]">
-                    Enter a valid arXiv URL or paper ID
+                    Enter a valid preprint URL, DOI, or arXiv ID
                   </span>
                 ) : null}
               </motion.div>
@@ -249,7 +249,7 @@ export default function Home() {
                 {" "}in any preprint URL.
               </p>
               <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3 space-y-1">
-                <p className="font-mono text-xs text-white/50">arxiv.org → <span className="text-white/70">arxivisual.org</span></p>
+                <p className="font-mono text-xs text-white/50">arxiv.org → <span className="text-white/70">rxivisual.com</span></p>
                 <p className="font-mono text-xs text-white/50">biorxiv.org → <span className="text-white/70">biorxivisual.org</span></p>
                 <p className="font-mono text-xs text-white/50">medrxiv.org → <span className="text-white/70">medrxivisual.org</span></p>
               </div>

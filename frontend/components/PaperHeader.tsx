@@ -18,7 +18,23 @@ export function PaperHeader({
   abstractMaxLength = 0,
   className = "",
 }: PaperHeaderProps) {
-  const arxivUrl = `https://arxiv.org/abs/${paper.paper_id}`;
+  const source = paper.source;
+  const paperUrl =
+    source === "biorxiv"
+      ? `https://www.biorxiv.org/content/${paper.paper_id}`
+      : source === "medrxiv"
+        ? `https://www.medrxiv.org/content/${paper.paper_id}`
+        : `https://arxiv.org/abs/${paper.paper_id}`;
+  const sourceLabel =
+    source === "biorxiv"
+      ? "View on bioRxiv"
+      : source === "medrxiv"
+        ? "View on medRxiv"
+        : "View on arXiv";
+  const idLabel =
+    source === "biorxiv" || source === "medrxiv"
+      ? `DOI:${paper.paper_id}`
+      : `arXiv:${paper.paper_id}`;
   const pdfUrl = paper.pdf_url || `https://arxiv.org/pdf/${paper.paper_id}.pdf`;
 
   const displayAbstract =
@@ -53,15 +69,15 @@ export function PaperHeader({
       {/* Paper ID and links */}
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <span className="rounded-lg bg-white/[0.04] px-3 py-1.5 font-mono text-white/50 border border-white/[0.06]">
-          arXiv:{paper.paper_id}
+          {idLabel}
         </span>
         <a
-          href={arxivUrl}
+          href={paperUrl}
           target="_blank"
           rel="noreferrer"
           className="rounded-lg bg-white/[0.04] px-3 py-1.5 text-white/55 border border-white/[0.06] transition hover:bg-white/[0.07] hover:text-white/80 hover:border-white/[0.12]"
         >
-          View on arXiv
+          {sourceLabel}
         </a>
         <a
           href={pdfUrl}
@@ -122,7 +138,9 @@ export function CompactPaperHeader({
       } ${className}`}
     >
       <div className="text-xs text-white/30 font-mono">
-        arXiv:{paper.paper_id}
+        {paper.source === "biorxiv" || paper.source === "medrxiv"
+          ? `DOI:${paper.paper_id}`
+          : `arXiv:${paper.paper_id}`}
       </div>
       <h3 className="mt-1 text-sm font-medium text-white/80 line-clamp-2">
         {paper.title}

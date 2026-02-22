@@ -34,8 +34,7 @@ from db.connection import get_db
 from db import queries
 from rendering import process_visualization, get_video_path, get_video_url, extract_scene_name
 from jobs import process_paper_job
-from utils.domain_utils import get_paper_pdf_url, get_branding, validate_server
-from middleware.rate_limit import check_rate_limit
+from utils.domain_utils import normalize_paper_input, validate_server
 
 router = APIRouter(prefix="/api")
 
@@ -74,26 +73,27 @@ async def start_processing(
 
     Returns immediately with a job_id. Poll /api/status/{job_id} for progress.
     """
+    # Normalize IDs/URLs up front so DOI URLs work reliably across bioRxiv/medRxiv.
+    paper_id, source_hint = normalize_paper_input(request.arxiv_id)
+    source = request.source or source_hint
+
     # Enforce domain-based server restrictions (e.g. biorxivisual.org only accepts bioRxiv)
     host = http_request.headers.get("host", "")
-    is_valid, error_msg = validate_server(host, request.arxiv_id, source=request.source)
+    is_valid, error_msg = validate_server(host, paper_id, source=source)
     if not is_valid:
         raise HTTPException(status_code=400, detail=error_msg)
 
-    # Rate limiting
-    check_rate_limit(http_request)
-
     # Create job in database
-    job_id = await queries.create_job(db, request.arxiv_id)
+    job_id = await queries.create_job(db, paper_id)
 
     # Start background processing (pass optional source hint)
     background_tasks.add_task(
-        process_paper_job, job_id, request.arxiv_id, request.source
+        process_paper_job, job_id, paper_id, source
     )
 
     return ProcessResponse(
         job_id=job_id,
-        arxiv_id=request.arxiv_id,
+        arxiv_id=paper_id,
         status=JobStatus.queued,
         message="Processing started. Poll /api/status/{job_id} for updates.",
     )

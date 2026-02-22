@@ -16,14 +16,17 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "arXivisual",
-    template: "%s · arXivisual",
+    default: "OpenrXivisual",
+    template: "%s · OpenrXivisual",
   },
   description:
-    "Turn arXiv papers into scrollytelling explanations with Manim-generated visuals.",
-  applicationName: "arXivisual",
+    "Turn arXiv, bioRxiv, and medRxiv preprints into scrollytelling explanations with AI-generated visuals.",
+  applicationName: "OpenrXivisual",
   keywords: [
     "arXiv",
+    "bioRxiv",
+    "medRxiv",
+    "preprints",
     "research",
     "visualization",
     "scrollytelling",
