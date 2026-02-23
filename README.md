@@ -1,18 +1,9 @@
-<div align="center">
-    <img alt="Logo" src="frontend/public/icon.png" width=100 />
-</div>
 <h1 align="center">
-  <a href="https://www.arxivisual.org/" target="_blank">openRxivisual</a>
+  <a href="https://www.rxivisual.com" target="_blank">Rxivisual</a>
 </h1>
 <p align="center">
    Transform research papers into visual stories
 </p>
-
-[![arXivisual Video](frontend/public/arXivisual.mp4)](https://github.com/user-attachments/assets/5453760b-5f82-4fd1-9a77-fe8818fea059)
-
-![arXivisual Landing Page](frontend/public/landing.jpeg)
-
-![arXivisual Manim](frontend/public/manim.png)
 
 ## How It Works
 
