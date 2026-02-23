@@ -34,12 +34,12 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     title: {
-      default: "OpenrXivisual",
-      template: "%s · OpenrXivisual",
+      default: branding.name,
+      template: `%s · ${branding.name}`,
     },
     description:
       "Turn arXiv, bioRxiv, and medRxiv preprints into scrollytelling explanations with AI-generated visuals.",
-    applicationName: "OpenrXivisual",
+    applicationName: branding.name,
     keywords: [
       "arXiv",
       "bioRxiv",

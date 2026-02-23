@@ -8,11 +8,12 @@ Docs at: http://localhost:8000/docs
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables BEFORE any local imports
 # (rendering/storage.py reads STORAGE_MODE at import time)
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 # Configure logging
 logging.basicConfig(

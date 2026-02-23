@@ -759,7 +759,7 @@ function ErrorState({
   onRetry: () => void;
 }) {
   return (
-    <div className="flex items-center justify-center py-20 px-6">
+    <div className="min-h-dvh flex items-center justify-center px-6 translate-y-[16vh]">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

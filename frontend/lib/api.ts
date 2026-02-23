@@ -16,8 +16,43 @@ import type {
 // Toggle between mock and real API
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true";
 
-// Backend API base URL - defaults to localhost:8000 for development
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Optional API key for deployments that protect backend routes.
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY?.trim();
+
+function resolveApiBase(): string {
+  const configured = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (configured) {
+    if (typeof window !== "undefined") {
+      try {
+        const configuredUrl = new URL(configured);
+        const isLocalConfiguredHost =
+          configuredUrl.hostname === "localhost" || configuredUrl.hostname === "127.0.0.1";
+        const isRemoteBrowserHost =
+          window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1";
+
+        if (isLocalConfiguredHost && isRemoteBrowserHost) {
+          configuredUrl.hostname = window.location.hostname;
+          if (!configuredUrl.port) configuredUrl.port = "8000";
+          return configuredUrl.toString().replace(/\/$/, "");
+        }
+      } catch {
+        // Non-URL value; fall back to configured string below.
+      }
+    }
+    return configured;
+  }
+
+  // Same-origin proxy avoids browser-network and CORS issues on remote hosts.
+  return "/api/backend";
+}
+
+// Backend API base URL; auto-derives host in browser if not explicitly set.
+const API_BASE = resolveApiBase();
+
+function withApiHeaders(headers: HeadersInit = {}): HeadersInit {
+  if (!API_KEY) return headers;
+  return { ...headers, "x-api-key": API_KEY };
+}
 
 // === Types matching backend schemas ===
 
@@ -149,7 +184,7 @@ export async function processArxivPaper(arxivId: string, source?: string): Promi
 
   const res = await fetch(`${API_BASE}/api/process`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: withApiHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
   });
 
@@ -179,7 +214,9 @@ export async function getProcessingStatus(jobId: string): Promise<StatusResponse
     };
   }
 
-  const res = await fetch(`${API_BASE}/api/status/${encodeURIComponent(jobId)}`);
+  const res = await fetch(`${API_BASE}/api/status/${encodeURIComponent(jobId)}`, {
+    headers: withApiHeaders(),
+  });
 
   if (!res.ok) {
     if (res.status === 404) {
@@ -211,7 +248,9 @@ export async function getPaper(arxivId: string): Promise<Paper | null> {
     };
   }
 
-  const res = await fetch(`${API_BASE}/api/paper/${encodeURIComponent(arxivId)}`);
+  const res = await fetch(`${API_BASE}/api/paper/${encodeURIComponent(arxivId)}`, {
+    headers: withApiHeaders(),
+  });
 
   if (res.status === 404) {
     return null; // Paper not processed yet
@@ -289,7 +328,9 @@ export async function checkHealth(): Promise<HealthResponse> {
     };
   }
 
-  const res = await fetch(`${API_BASE}/api/health`);
+  const res = await fetch(`${API_BASE}/api/health`, {
+    headers: withApiHeaders(),
+  });
 
   if (!res.ok) {
     throw new Error(`Health check failed: ${res.status}`);
