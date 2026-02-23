@@ -5,6 +5,7 @@ Processes papers asynchronously with progress tracking.
 """
 
 import asyncio
+import hashlib
 import logging
 from datetime import datetime
 from db.connection import async_session_maker
@@ -140,11 +141,13 @@ async def process_paper_job(job_id: str, arxiv_id: str, source: str | None = Non
             logger.info("Creating visualization records in database...")
             viz_records = []
 
-            # Use paper-based prefix for consistent viz_ids across re-runs
-            paper_suffix = arxiv_id.replace(".", "")[:8]  # e.g., "1706.03762" -> "17060376"
+            # Use a stable full-id hash for consistent viz_ids across re-runs.
+            # This avoids collisions between different DOIs that share the same prefix
+            # and keeps IDs/path components filesystem-safe.
+            paper_suffix = hashlib.sha1(arxiv_id.encode("utf-8")).hexdigest()[:12]
 
             for i, visualization in enumerate(generated_visualizations):
-                # Create consistent viz_id based on paper and index, not job
+                # Create consistent viz_id based on paper hash and index, not job
                 viz_id = f"viz_{paper_suffix}_{i+1}"
                 logger.info(f"  [{i+1}/{len(generated_visualizations)}] Creating record for {viz_id}")
                 logger.debug(f"    Concept: {visualization.concept}")
@@ -297,7 +300,12 @@ async def _ingest_and_store_paper(db, job_id: str, arxiv_id: str, source: str | 
     """
     from ingestion import ingest_paper
 
-    server_label = source or "preprint server"
+    server_label_map = {
+        "arxiv": "arXiv",
+        "biorxiv": "bioRxiv",
+        "medrxiv": "medRxiv",
+    }
+    server_label = server_label_map.get((source or "").lower(), source or "preprint server")
     await queries.update_job_status(
         db, job_id,
         current_step=f"Fetching paper metadata from {server_label}",

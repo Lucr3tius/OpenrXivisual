@@ -2,12 +2,16 @@
 
 import { useEffect, useRef, useCallback } from "react";
 
+export type LogoType = "arxiv" | "biorxiv" | "medrxiv" | "rxiv";
+
 interface MosaicBackgroundProps {
   className?: string;
-  /** When true, renders the arXiv logo as colored mosaic fragments */
+  /** When true, renders a logo as colored mosaic fragments */
   showLogo?: boolean;
   /** Vertical position of the logo as a fraction of viewport height (default 0.22) */
   logoYFraction?: number;
+  /** Logo variant: arxiv (default), biorxiv, medrxiv, rxiv */
+  logoType?: LogoType;
 }
 
 // ---------------------------------------------------------------------------
@@ -24,21 +28,40 @@ function createRng(seed: number) {
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-const CELL_SIZE = 18;
-const JITTER = 6;
+const CELL_SIZE = 12;
+const JITTER = 3;
 const SEED = 42;
 
-// arXiv brand colors
-const ARXIV_GRAY = { r: 154, g: 140, b: 127 }; // #9a8c7f — ar, iv, back-stroke of X
-const ARXIV_RED = { r: 179, g: 27, b: 27 }; // #b31b1b — front diagonal of X
+// Neutral + domain accent colors
+const ARXIV_GRAY = { r: 154, g: 140, b: 127 }; // #9a8c7f
+// bioRxiv: #e74c3c, medRxiv: #3498db, rXivisual: #f97316
+const LOGO_COLORS: Record<LogoType, { r: number; g: number; b: number }> = {
+  arxiv: { r: 179, g: 27, b: 27 },
+  biorxiv: { r: 231, g: 76, b: 60 },
+  medrxiv: { r: 52, g: 152, b: 219 },
+  rxiv: { r: 249, g: 115, b: 22 },
+};
+
 
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
+const X_GLYPH = "Χ"; // Greek capital chi
+const LOGO_PARTS: Record<
+  LogoType,
+  { left: string; accent: string; right: string; accentYOffset: number }
+> = {
+  arxiv: { left: "ar", accent: X_GLYPH, right: "iv", accentYOffset: 0.06 },
+  biorxiv: { left: "bio", accent: "R", right: "xiv", accentYOffset: 0.0 },
+  medrxiv: { left: "med", accent: "R", right: "xiv", accentYOffset: 0.0 },
+  rxiv: { left: "r", accent: X_GLYPH, right: "iv", accentYOffset: 0.06 },
+};
+
 export function MosaicBackground({
   className = "",
   showLogo = false,
   logoYFraction = 0.22,
+  logoType = "arxiv",
 }: MosaicBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -98,8 +121,10 @@ export function MosaicBackground({
       const offCtx = offscreen.getContext("2d");
 
       if (offCtx) {
-        // Font size scales with viewport width (~12%)
-        const fontSize = Math.max(101, Math.round(w * 0.203));
+        const parts = LOGO_PARTS[logoType];
+        const logoText = `${parts.left}${parts.accent}${parts.right}`;
+        const baseScale = 0.203;
+        const fontSize = Math.max(60, Math.round(w * baseScale));
         offCtx.font = `900 ${fontSize}px "Arial Black", "Impact", "Helvetica Neue", Arial, sans-serif`;
         offCtx.textAlign = "center";
         offCtx.textBaseline = "middle";
@@ -107,45 +132,26 @@ export function MosaicBackground({
         const logoX = w / 2;
         const logoY = h * logoYFraction;
 
-        // Measure text segments to locate the X character boundaries
-        const fullWidth = offCtx.measureText("arXiv").width;
-        const arWidth = offCtx.measureText("ar").width;
-        const arXWidth = offCtx.measureText("arX").width;
-
+        const fullWidth = offCtx.measureText(logoText).width;
+        const leftWidth = offCtx.measureText(parts.left).width;
+        const leftPlusAccentWidth = offCtx.measureText(`${parts.left}${parts.accent}`).width;
         const textLeft = logoX - fullWidth / 2;
-        const xLeft = textLeft + arWidth;
-        const xRight = textLeft + arXWidth;
+        const xLeft = textLeft + leftWidth;
+        const xRight = textLeft + leftPlusAccentWidth;
         const xCenter = (xLeft + xRight) / 2;
-        const xHalfW = (xRight - xLeft) / 2;
 
-        // Pass 1: Draw "ar" in gray (left of X)
+        // Draw left + right in neutral gray, then accent only the configured glyph.
         offCtx.fillStyle = `rgb(${ARXIV_GRAY.r}, ${ARXIV_GRAY.g}, ${ARXIV_GRAY.b})`;
         offCtx.textAlign = "right";
-        offCtx.fillText("ar", xLeft, logoY);
-
-        // Pass 2: Draw "iv" in gray (right of X)
+        offCtx.fillText(parts.left, xLeft, logoY);
         offCtx.textAlign = "left";
-        offCtx.fillText("iv", xRight, logoY);
+        offCtx.fillText(parts.right, xRight, logoY);
 
-        // Pass 3: Draw the X as two thick line strokes
-        const strokeHalfH = fontSize * 0.50;
-        const strokeLineW = fontSize * 0.18;
-        offCtx.lineWidth = strokeLineW;
-        offCtx.lineCap = "round";
-
-        // Gray "\" stroke (upper-left → lower-right) — back stroke
-        offCtx.strokeStyle = `rgb(${ARXIV_GRAY.r}, ${ARXIV_GRAY.g}, ${ARXIV_GRAY.b})`;
-        offCtx.beginPath();
-        offCtx.moveTo(xCenter - xHalfW * 0.85, logoY - strokeHalfH);
-        offCtx.lineTo(xCenter + xHalfW * 0.85, logoY + strokeHalfH);
-        offCtx.stroke();
-
-        // Red "/" stroke (lower-left → upper-right) — front stroke, drawn ON TOP
-        offCtx.strokeStyle = `rgb(${ARXIV_RED.r}, ${ARXIV_RED.g}, ${ARXIV_RED.b})`;
-        offCtx.beginPath();
-        offCtx.moveTo(xCenter - xHalfW * 0.85, logoY + strokeHalfH);
-        offCtx.lineTo(xCenter + xHalfW * 0.85, logoY - strokeHalfH);
-        offCtx.stroke();
+        const accent = LOGO_COLORS[logoType];
+        const accentY = logoY + fontSize * parts.accentYOffset;
+        offCtx.fillStyle = `rgb(${accent.r}, ${accent.g}, ${accent.b})`;
+        offCtx.textAlign = "center";
+        offCtx.fillText(parts.accent, xCenter, accentY);
 
         logoData = offCtx.getImageData(0, 0, w, h);
       }
@@ -197,18 +203,18 @@ export function MosaicBackground({
                 isLogoFragment = true;
                 const brightnessShift = 0.85 + rand() * 0.30; // 0.85-1.15
 
-                // Distinguish red vs gray by checking red channel dominance
-                if (pr > 150 && pg < 80 && pb < 80) {
-                  // Red zone (the "/" stroke of X)
-                  const opacity = (0.25 + rand() * 0.10) * brightnessShift;
-                  fillColor = `rgba(${ARXIV_RED.r}, ${ARXIV_RED.g}, ${ARXIV_RED.b}, ${opacity.toFixed(3)})`;
-                  strokeColor = `rgba(255, 255, 255, ${(0.12 + rand() * 0.06).toFixed(3)})`;
-                } else {
-                  // Gray zone (ar, iv, gray stroke of X)
-                  const opacity = (0.20 + rand() * 0.10) * brightnessShift;
-                  fillColor = `rgba(${ARXIV_GRAY.r}, ${ARXIV_GRAY.g}, ${ARXIV_GRAY.b}, ${opacity.toFixed(3)})`;
-                  strokeColor = `rgba(255, 255, 255, ${(0.12 + rand() * 0.06).toFixed(3)})`;
-                }
+                const accent = LOGO_COLORS[logoType];
+                const distAccent =
+                  (pr - accent.r) ** 2 + (pg - accent.g) ** 2 + (pb - accent.b) ** 2;
+                const distGray =
+                  (pr - ARXIV_GRAY.r) ** 2 + (pg - ARXIV_GRAY.g) ** 2 + (pb - ARXIV_GRAY.b) ** 2;
+                const c = distAccent < distGray ? accent : ARXIV_GRAY;
+                const cr = c.r;
+                const cg = c.g;
+                const cb = c.b;
+                const opacity = (0.22 + rand() * 0.10) * brightnessShift;
+                fillColor = `rgba(${cr}, ${cg}, ${cb}, ${opacity.toFixed(3)})`;
+                strokeColor = `rgba(255, 255, 255, ${(0.12 + rand() * 0.06).toFixed(3)})`;
               }
             }
           }
@@ -236,7 +242,7 @@ export function MosaicBackground({
         }
       }
     }
-  }, [showLogo, logoYFraction]);
+  }, [showLogo, logoYFraction, logoType]);
 
   useEffect(() => {
     render();

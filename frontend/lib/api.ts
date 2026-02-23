@@ -5,7 +5,13 @@
  */
 
 import { getDemoPaper, MOCK_PAPER, MOCK_STATUS } from "./mock-data";
-import type { Paper, ProcessingStatus, Section } from "./types";
+import type {
+  FigureReference,
+  Paper,
+  ProcessingStatus,
+  Section,
+  TableReference,
+} from "./types";
 
 // Toggle between mock and real API
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true";
@@ -46,6 +52,8 @@ export interface SectionResponse {
   level: number;
   order_index: number;
   equations: string[];
+  figures?: FigureReference[];
+  tables?: TableReference[];
 }
 
 export interface VisualizationResponse {
@@ -87,6 +95,35 @@ function resolveVideoUrl(url: string | undefined | null): string | undefined {
     return url;
   }
   return `${API_BASE}${url}`;
+}
+
+function sanitizeFigureRefs(input: unknown): FigureReference[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+    .map((item) => ({
+      id: typeof item.id === "string" ? item.id : undefined,
+      caption: typeof item.caption === "string" ? item.caption : undefined,
+      page: typeof item.page === "number" ? item.page : null,
+    }));
+}
+
+function sanitizeTableRefs(input: unknown): TableReference[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+    .map((item) => ({
+      id: typeof item.id === "string" ? item.id : undefined,
+      caption: typeof item.caption === "string" ? item.caption : undefined,
+      headers: Array.isArray(item.headers)
+        ? item.headers.filter((h): h is string => typeof h === "string")
+        : [],
+      rows: Array.isArray(item.rows)
+        ? item.rows.map((row) =>
+            Array.isArray(row) ? row.filter((cell): cell is string => typeof cell === "string") : []
+          )
+        : [],
+    }));
 }
 
 // === API Functions ===
@@ -208,6 +245,8 @@ export async function getPaper(arxivId: string): Promise<Paper | null> {
       level: s.level,
       order_index: s.order_index,
       equations: s.equations,
+      figures: sanitizeFigureRefs(s.figures),
+      tables: sanitizeTableRefs(s.tables),
       video_url: resolveVideoUrl(viz?.video_url),
     };
   });

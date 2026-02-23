@@ -12,6 +12,8 @@ export type ScrollySectionModel = {
   content: string;
   level?: 1 | 2 | 3;
   equations?: string[];
+  figures?: { id?: string; caption?: string; page?: number | null }[];
+  tables?: { id?: string; caption?: string; headers?: string[]; rows?: string[][] }[];
   videoUrl?: string;
 };
 

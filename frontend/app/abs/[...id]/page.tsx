@@ -6,10 +6,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { CardStack } from "@/components/CardStack";
 import type { ScrollySectionModel } from "@/components/ScrollySection";
 import { GlassCard } from "@/components/ui/glass-card";
-import { MosaicBackground } from "@/components/ui/mosaic-background";
+import { MosaicBackground, type LogoType } from "@/components/ui/mosaic-background";
 import { ShardField } from "@/components/ui/glass-shard";
 import type { Paper, ProcessingStatus } from "@/lib/types";
 import { DEMO_PAPER_IDS, getDemoPaper } from "@/lib/mock-data";
+import { getBranding } from "@/lib/domain-config";
 import {
   getPaper,
   processArxivPaper,
@@ -105,6 +106,7 @@ export default function PaperPage({
     try {
       const paper = await getPaper(arxivId);
       if (paper) {
+        if (paper.source) setConfirmedSource(paper.source as "arxiv" | "biorxiv" | "medrxiv");
         setState({ type: "ready", paper });
         return;
       }
@@ -118,19 +120,40 @@ export default function PaperPage({
     }
   }, [arxivId]);
 
+  // Source hint from current domain (biorxivisual.org / medrxivisual.org)
+  const domainSource = useMemo((): "biorxiv" | "medrxiv" | undefined => {
+    if (typeof window === "undefined") return undefined;
+    const previewBrandHost = process.env.NEXT_PUBLIC_BRANDING_HOST?.trim().toLowerCase();
+    const source = getBranding(previewBrandHost || window.location.hostname).source;
+    if (source === "biorxiv" || source === "medrxiv") return source;
+    return undefined;
+  }, []);
+
   // Best-effort source detection from the paper ID in the URL
-  const paperSource = useMemo(() => {
+  const inferredSource = useMemo((): "arxiv" | "biorxiv" | "medrxiv" | undefined => {
     if (!arxivId) return undefined;
     if (/^\d{4}\.\d{4,5}/.test(arxivId) || /^[a-z-]+\/\d{7}/.test(arxivId)) return "arxiv";
-    if (arxivId.startsWith("10.")) return undefined; // Let backend auto-detect
+    if (arxivId.startsWith("10.64898/")) return "medrxiv";
+    if (arxivId.startsWith("10.1101/")) {
+      // medRxiv DOIs via 10.1101 have 8+ digit suffix; bioRxiv has 6
+      const trailing = arxivId.split(".").pop() ?? "";
+      return trailing.length >= 8 ? "medrxiv" : "biorxiv";
+    }
+    if (arxivId.startsWith("10.")) return "biorxiv";
     return undefined;
   }, [arxivId]);
+
+  // Resolved source: starts from URL heuristic, updates when paper loads from API
+  const [confirmedSource, setConfirmedSource] = useState<"arxiv" | "biorxiv" | "medrxiv" | undefined>(undefined);
+  const activeSource = confirmedSource ?? domainSource ?? inferredSource ?? "arxiv";
+  const logoType: LogoType = activeSource === "arxiv" ? "arxiv" : activeSource === "biorxiv" ? "biorxiv" : "medrxiv";
 
   const startProcessing = useCallback(async () => {
     if (!arxivId) return;
 
     try {
-      const response = await processArxivPaper(arxivId, paperSource);
+      const sourceHint = domainSource ?? inferredSource;
+      const response = await processArxivPaper(arxivId, sourceHint);
       setJobId(response.job_id);
       setState({
         type: "processing",
@@ -150,7 +173,7 @@ export default function PaperPage({
         message: err instanceof Error ? err.message : "Failed to start processing",
       });
     }
-  }, [arxivId, paperSource]);
+  }, [arxivId, domainSource, inferredSource]);
 
   // Demo simulation: animate progress 0→100% over 5 seconds
   const processingSectionsTotal =
@@ -288,7 +311,7 @@ export default function PaperPage({
             transition={{ duration: 0.5 }}
             className="fixed inset-0 z-0 overflow-hidden"
           >
-            <MosaicBackground showLogo logoYFraction={0.28} />
+            <MosaicBackground showLogo logoYFraction={0.28} logoType={logoType} />
             <ShardField />
           </motion.div>
         )}
@@ -395,6 +418,8 @@ function ReadyState({
       content: s.summary || s.content,
       level: clampLevel(s.level),
       equations: s.equations,
+      figures: s.figures,
+      tables: s.tables,
       videoUrl: s.video_url,
     }));
 
@@ -504,7 +529,7 @@ function ReadyState({
 
 function LoadingState({ message }: { message: string }) {
   return (
-    <div className="flex flex-col items-center justify-center py-32 px-6">
+    <div className="min-h-dvh flex flex-col items-center justify-center px-6 translate-y-[16vh]">
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}

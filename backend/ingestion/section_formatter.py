@@ -12,14 +12,71 @@ Output populates both .content and .summary on each Section.
 
 import json
 import logging
+import os
 import re
 
-from agents.base import call_llm
-from models.paper import Section, ArxivPaperMeta
+from agents.base import call_llm as call_llm_dedalus
+from models.paper import ArxivPaperMeta, Equation, Figure, Section, Table
 
 logger = logging.getLogger(__name__)
 
 MAX_SECTIONS = 5
+
+
+def _normalize_anthropic_model(model: str) -> str:
+    """Map internal/default model strings to Anthropic-native names."""
+    raw = model.split("/", 1)[-1]
+    mapping = {
+        "claude-sonnet-4-5-20250929": "claude-sonnet-4-5",
+        "claude-haiku-4-5-20251001": "claude-haiku-4-5",
+    }
+    return mapping.get(raw, raw)
+
+
+async def _call_formatter_llm(
+    *,
+    prompt: str,
+    model: str,
+    system_prompt: str,
+    max_tokens: int,
+) -> str:
+    """
+    Call LLM for section formatting.
+
+    Uses Anthropic directly by default (for parser/summarizer telemetry),
+    with Dedalus fallback if Anthropic key is not configured.
+    """
+    provider = os.getenv("SECTION_FORMATTER_PROVIDER", "anthropic").strip().lower()
+    if provider in ("anthropic", "auto"):
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+        if anthropic_key:
+            try:
+                from anthropic import AsyncAnthropic
+
+                client = AsyncAnthropic(api_key=anthropic_key, timeout=300.0)
+                response = await client.messages.create(
+                    model=_normalize_anthropic_model(model),
+                    max_tokens=max_tokens,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                text_parts = [
+                    block.text
+                    for block in response.content
+                    if getattr(block, "type", None) == "text" and getattr(block, "text", None)
+                ]
+                return "\n".join(text_parts).strip()
+            except Exception as e:
+                logger.warning(f"Anthropic formatter call failed; falling back to Dedalus: {e}")
+        elif provider == "anthropic":
+            logger.warning("SECTION_FORMATTER_PROVIDER=anthropic but ANTHROPIC_API_KEY is missing; using Dedalus fallback")
+
+    return await call_llm_dedalus(
+        prompt=prompt,
+        model=model,
+        system_prompt=system_prompt,
+        max_tokens=max_tokens,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +182,7 @@ Full paper content:
 
     print(f"[FORMATTER] Phase 1: Summarizing paper ({total_words} words -> ~{target_words} words)...")
 
-    result = await call_llm(
+    result = await _call_formatter_llm(
         prompt=user_prompt,
         model=model,
         system_prompt=system_prompt,
@@ -196,7 +253,7 @@ Summarized text to organize into sections:
     summary_words = len(summary_text.split())
     print(f"[FORMATTER] Phase 2: Organizing {summary_words} words into <={MAX_SECTIONS} sections...")
 
-    raw_response = await call_llm(
+    raw_response = await _call_formatter_llm(
         prompt=user_prompt,
         model=model,
         system_prompt=system_prompt,
@@ -310,6 +367,88 @@ def _clean_display_text(text: str) -> str:
     return cleaned
 
 
+def _collect_unique_assets(
+    sections: list[Section],
+) -> tuple[list[Equation], list[Figure], list[Table]]:
+    """Collect and dedupe equations/figures/tables from raw parsed sections."""
+    equations: list[Equation] = []
+    figures: list[Figure] = []
+    tables: list[Table] = []
+
+    seen_eq: set[str] = set()
+    seen_fig: set[str] = set()
+    seen_tbl: set[str] = set()
+
+    for section in sections:
+        for eq in section.equations:
+            key = (eq.latex or "").strip()
+            if not key or key in seen_eq:
+                continue
+            seen_eq.add(key)
+            equations.append(eq)
+        for fig in section.figures:
+            key = (fig.id or "").strip()
+            if not key or key in seen_fig:
+                continue
+            seen_fig.add(key)
+            figures.append(fig)
+        for tbl in section.tables:
+            key = (tbl.id or "").strip()
+            if not key or key in seen_tbl:
+                continue
+            seen_tbl.add(key)
+            tables.append(tbl)
+
+    return equations, figures, tables
+
+
+def _match_equations(content: str, equations: list[Equation]) -> list[Equation]:
+    normalized_content = re.sub(r"\s+", "", content)
+    matched: list[Equation] = []
+    for eq in equations:
+        latex = (eq.latex or "").strip()
+        if not latex:
+            continue
+        normalized_eq = re.sub(r"\s+", "", latex)
+        if normalized_eq and normalized_eq in normalized_content:
+            matched.append(eq)
+    return matched
+
+
+def _match_figures(content: str, figures: list[Figure]) -> list[Figure]:
+    content_lower = content.lower()
+    matched: list[Figure] = []
+    for fig in figures:
+        fig_id = (fig.id or "").lower()
+        fig_num = fig_id.replace("figure-", "")
+        caption = (fig.caption or "").lower()
+        if (
+            (fig_id and fig_id in content_lower)
+            or (fig_num and f"figure {fig_num}" in content_lower)
+            or (fig_num and f"fig. {fig_num}" in content_lower)
+            or (fig_num and f"fig {fig_num}" in content_lower)
+            or (caption and caption[:40] in content_lower)
+        ):
+            matched.append(fig)
+    return matched
+
+
+def _match_tables(content: str, tables: list[Table]) -> list[Table]:
+    content_lower = content.lower()
+    matched: list[Table] = []
+    for tbl in tables:
+        tbl_id = (tbl.id or "").lower()
+        tbl_num = tbl_id.replace("table-", "")
+        caption = (tbl.caption or "").lower()
+        if (
+            (tbl_id and tbl_id in content_lower)
+            or (tbl_num and f"table {tbl_num}" in content_lower)
+            or (caption and caption[:40] in content_lower)
+        ):
+            matched.append(tbl)
+    return matched
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -365,21 +504,46 @@ async def format_sections(
         organized = _fallback_split(summary_text)
 
     # --- Build final Section objects ---
+    all_equations, all_figures, all_tables = _collect_unique_assets(sections)
+    used_eq_ids: set[str] = set()
+    used_fig_ids: set[str] = set()
+    used_tbl_ids: set[str] = set()
+
     result_sections: list[Section] = []
     for i, org_section in enumerate(organized):
         cleaned_content = _clean_display_text(org_section["content"])
+        matched_eq = _match_equations(cleaned_content, all_equations)
+        matched_figures = _match_figures(cleaned_content, all_figures)
+        matched_tables = _match_tables(cleaned_content, all_tables)
+
+        for eq in matched_eq:
+            used_eq_ids.add((eq.latex or "").strip())
+        for fig in matched_figures:
+            used_fig_ids.add((fig.id or "").strip())
+        for tbl in matched_tables:
+            used_tbl_ids.add((tbl.id or "").strip())
+
         section = Section(
             id=f"{meta.arxiv_id}-section-{i + 1}",
             title=org_section["title"],
             level=1,
             content=cleaned_content,
             summary=cleaned_content,
-            equations=[],
-            figures=[],
-            tables=[],
+            equations=matched_eq,
+            figures=matched_figures,
+            tables=matched_tables,
             parent_id=None,
         )
         result_sections.append(section)
+
+    # Keep any unmatched assets so parsed visuals are never silently dropped.
+    if result_sections:
+        leftover_eq = [eq for eq in all_equations if (eq.latex or "").strip() not in used_eq_ids]
+        leftover_fig = [fig for fig in all_figures if (fig.id or "").strip() not in used_fig_ids]
+        leftover_tbl = [tbl for tbl in all_tables if (tbl.id or "").strip() not in used_tbl_ids]
+        result_sections[0].equations.extend(leftover_eq)
+        result_sections[0].figures.extend(leftover_fig)
+        result_sections[0].tables.extend(leftover_tbl)
 
     print(f"[FORMATTER] === Pipeline complete: {len(result_sections)} final sections ===")
     total_output_words = 0

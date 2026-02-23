@@ -27,6 +27,21 @@ export type Section = {
   level: number;
   order_index: number;
   equations: string[];
+  figures?: FigureReference[];
+  tables?: TableReference[];
   video_url?: string;
+};
+
+export type FigureReference = {
+  id?: string;
+  caption?: string;
+  page?: number | null;
+};
+
+export type TableReference = {
+  id?: string;
+  caption?: string;
+  headers?: string[];
+  rows?: string[][];
 };
 

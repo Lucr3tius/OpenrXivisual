@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 BIORXIV_API_BASE = "https://api.biorxiv.org/details"
 
+# medRxiv migrated to DOI prefix 10.64898; always route to medrxiv
+MEDRXIV_DOI_PREFIX = "10.64898/"
+
 
 def normalize_doi(doi: str) -> str:
     """
@@ -45,12 +48,15 @@ def is_rxiv_doi(doi: str) -> bool:
 
 async def detect_server(doi: str) -> str:
     """
-    Detect whether a DOI belongs to bioRxiv or medRxiv by querying both APIs.
+    Detect whether a DOI belongs to bioRxiv or medRxiv.
 
-    Returns "biorxiv" or "medrxiv".
-    Raises ValueError if the DOI is not found on either server.
+    For 10.64898/* DOIs (medRXiv's new prefix), return "medrxiv" immediately.
+    For 10.1101/* probe both APIs.
     """
     doi = normalize_doi(doi)
+    if doi.startswith(MEDRXIV_DOI_PREFIX):
+        logger.info(f"DOI {doi} uses medRxiv prefix, skipping probe")
+        return "medrxiv"
     for server in ("biorxiv", "medrxiv"):
         url = f"{BIORXIV_API_BASE}/{server}/{doi}/na/1"
         try:

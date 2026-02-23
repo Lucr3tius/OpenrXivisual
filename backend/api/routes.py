@@ -114,19 +114,19 @@ async def get_status(job_id: str, db: AsyncSession = Depends(get_db)):
         steps = [
             StepInfo(
                 name="fetch_paper",
-                status="complete" if progress > 0.1 else ("in_progress" if progress > 0.0 else "pending"),
+                status="complete" if progress >= 0.15 else ("in_progress" if progress > 0.0 else "pending"),
             ),
             StepInfo(
                 name="parse_sections",
-                status="complete" if progress > 0.25 else ("in_progress" if progress > 0.1 else "pending"),
+                status="complete" if progress >= 0.30 else ("in_progress" if progress >= 0.15 else "pending"),
             ),
             StepInfo(
                 name="generate_visualizations",
-                status="complete" if progress > 0.4 else ("in_progress" if progress > 0.25 else "pending"),
+                status="complete" if progress >= 0.70 else ("in_progress" if progress >= 0.30 else "pending"),
             ),
             StepInfo(
                 name="render_videos",
-                status="complete" if progress >= 1.0 else ("in_progress" if progress > 0.4 else "pending"),
+                status="complete" if progress >= 1.0 else ("in_progress" if progress >= 0.70 else "pending"),
             ),
         ]
 
@@ -203,6 +203,8 @@ async def get_paper(paper_id: str, db: AsyncSession = Depends(get_db)):
                     level=s.level,
                     order_index=s.order_index,
                     equations=s.equations or [],
+                    figures=s.figures or [],
+                    tables=s.tables or [],
                     video_url=section_video_map.get(s.id),
                 )
                 for s in sections

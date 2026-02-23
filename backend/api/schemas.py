@@ -112,6 +112,8 @@ class SectionResponse(BaseModel):
     level: int = Field(..., description="Heading level (1=H1, 2=H2, etc.)")
     order_index: int = Field(..., description="Order in which sections appear")
     equations: list[str] = Field(default_factory=list, description="LaTeX equations in this section")
+    figures: list[dict] = Field(default_factory=list, description="Figure references parsed from this section")
+    tables: list[dict] = Field(default_factory=list, description="Table data parsed from this section")
     video_url: Optional[str] = Field(None, description="URL to visualization video for this section, if available")
 
 

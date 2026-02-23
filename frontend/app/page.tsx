@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
-import { MosaicBackground } from "@/components/ui/mosaic-background";
 import { ShardField } from "@/components/ui/glass-shard";
 import { GlassCard } from "@/components/ui/glass-card";
+import { getBranding } from "@/lib/domain-config";
 
 /**
  * Extract a normalized paper ID from any supported input:
@@ -54,22 +54,51 @@ function extractPaperId(inputRaw: string): { id: string; source: string } | null
   return null;
 }
 
-const placeholders = [
-  "Paste an arXiv, bioRxiv, or medRxiv URL or ID...",
-  "1706.03762 (Attention Is All You Need)",
-  "https://arxiv.org/abs/2005.14165",
-  "https://www.biorxiv.org/content/10.1101/2024.02.20.707059",
-  "10.1101/2024.03.15.24304018 (medRxiv DOI)",
-];
+function getPlaceholders(source: "arxiv" | "biorxiv" | "medrxiv" | "all"): string[] {
+  if (source === "biorxiv") {
+    return [
+      "Paste a bioRxiv URL or ID...",
+      "https://www.biorxiv.org/content/10.1101/2024.02.20.707059",
+      "10.1101/2021.10.04.463034",
+      "10.1101/2024.04.18.590025",
+    ];
+  }
+  if (source === "medrxiv") {
+    return [
+      "Paste a medRxiv URL or ID...",
+      "https://www.medrxiv.org/content/10.1101/2024.05.31.24308297",
+      "10.64898/2026.02.16.26346428",
+      "10.1101/2024.05.31.24308283",
+    ];
+  }
+  if (source === "arxiv") {
+    return [
+      "Paste an arXiv URL or ID...",
+      "1706.03762 (Attention Is All You Need)",
+      "https://arxiv.org/abs/2005.14165",
+    ];
+  }
+  return [
+    "Paste an arXiv, bioRxiv, or medRxiv URL or ID...",
+    "1706.03762 (Attention Is All You Need)",
+    "https://arxiv.org/abs/2005.14165",
+    "https://www.biorxiv.org/content/10.1101/2024.02.20.707059",
+    "10.1101/2024.03.15.24304018 (medRxiv DOI)",
+  ];
+}
 
-/** Detect the current domain's preprint focus from window.location.hostname */
-function useSiteConfig() {
+function getWordmark(source: "arxiv" | "biorxiv" | "medrxiv" | "all") {
+  if (source === "medrxiv") return { prefix: "med", accent: "R", suffix: "χivisual" };
+  if (source === "biorxiv") return { prefix: "bio", accent: "R", suffix: "χivisual" };
+  return { prefix: "open", accent: "R", suffix: "χivisual" };
+}
+
+/** Get domain-specific branding (client-side) */
+function useBranding() {
+  const previewBrandHost = process.env.NEXT_PUBLIC_BRANDING_HOST?.trim().toLowerCase();
   return useMemo(() => {
-    if (typeof window === "undefined") return { source: "all", label: "arXiv / bioRxiv / medRxiv" };
-    const host = window.location.hostname;
-    if (host.includes("biorxivisual")) return { source: "biorxiv", label: "bioRxiv" };
-    if (host.includes("medrxivisual")) return { source: "medrxiv", label: "medRxiv" };
-    return { source: "all", label: "arXiv / bioRxiv / medRxiv" };
+    if (typeof window === "undefined") return getBranding("rxivisual.com");
+    return getBranding(previewBrandHost || window.location.hostname);
   }, []);
 }
 
@@ -77,7 +106,25 @@ export default function Home() {
   const router = useRouter();
   const [value, setValue] = useState("");
   const [touched, setTouched] = useState(false);
-  const site = useSiteConfig();
+  const branding = useBranding();
+  const placeholders = useMemo(
+    () => getPlaceholders(branding.source),
+    [branding.source],
+  );
+  const wordmark = useMemo(
+    () => getWordmark(branding.source),
+    [branding.source],
+  );
+
+  useEffect(() => {
+    let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "theme-color";
+      document.head.appendChild(meta);
+    }
+    meta.content = branding.theme_color;
+  }, [branding.theme_color]);
 
   const parsed = useMemo(() => extractPaperId(value), [value]);
   const parsedId = parsed?.id ?? null;
@@ -92,17 +139,25 @@ export default function Home() {
 
   return (
     <main className="min-h-dvh relative overflow-hidden bg-black">
-      {/* Mosaic background with arXiv logo */}
-      <MosaicBackground showLogo logoYFraction={0.20} />
-
       {/* Floating glass shards */}
       <ShardField />
 
       <div className="relative z-10 mx-auto w-full max-w-6xl px-6">
-        {/* ── First viewport: Logo (clear) + search bar below ── */}
+        {/* ── First viewport: Logo + search bar below ── */}
         <section className="min-h-dvh flex flex-col">
-          {/* Spacer — keeps the logo area clear */}
-          <div className="flex-1" />
+          {/* Logo — clean text, centered in upper portion */}
+          <div className="flex-1 flex items-center justify-center">
+            <motion.h1
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.2 }}
+              className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tight text-white/90 select-none"
+            >
+              {wordmark.prefix}
+              <span style={{ color: branding.theme_color }}>{wordmark.accent}</span>
+              {wordmark.suffix}
+            </motion.h1>
+          </div>
 
           {/* Search area — pinned to lower portion of viewport */}
           <div className="max-w-4xl mx-auto w-full text-center pb-16 sm:pb-24">
@@ -113,8 +168,15 @@ export default function Home() {
               transition={{ duration: 0.6, delay: 0.5 }}
               className="text-lg sm:text-xl text-white/40 max-w-2xl mx-auto leading-relaxed font-light"
             >
-              Paste any {site.label} preprint. Watch as it turns complex papers
-              into digestible and <span className="text-white/60 font-medium">visually</span> appealing video explanations.
+              {branding.hero_subtitle}.
+            </motion.p>
+            <motion.p
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.65 }}
+              className="mt-2 text-base sm:text-lg text-white/30 max-w-2xl mx-auto leading-relaxed font-light"
+            >
+              Paste {branding.server_display} URL or ID.
             </motion.p>
 
             {/* Input Section */}
@@ -174,24 +236,7 @@ export default function Home() {
               className="mt-8 flex flex-wrap items-center justify-center gap-3"
             >
               <span className="text-sm text-white/30">Try these:</span>
-              {(site.source === "biorxiv"
-                ? [
-                    { id: "10.1101/2024.02.20.707059", label: "COVID-19", icon: "◇" },
-                    { id: "10.1101/2023.05.15.550578", label: "Neuroscience", icon: "◈" },
-                    { id: "10.1101/2024.01.12.575480", label: "Genomics", icon: "◆" },
-                  ]
-                : site.source === "medrxiv"
-                ? [
-                    { id: "10.1101/2024.03.15.24304018", label: "Public Health", icon: "◇" },
-                    { id: "10.1101/2024.01.08.21245332", label: "Epidemiology", icon: "◈" },
-                    { id: "10.1101/2024.02.10.24302589", label: "Clinical Trial", icon: "◆" },
-                  ]
-                : [
-                    { id: "1706.03762", label: "Transformers (arXiv)", icon: "◇" },
-                    { id: "10.1101/2024.02.20.707059", label: "bioRxiv", icon: "◈" },
-                    { id: "2303.08774", label: "GPT-4 (arXiv)", icon: "◆" },
-                  ]
-              ).map((example) => (
+              {branding.examples.map((example) => (
                 <motion.button
                   key={example.id}
                   whileHover={{ scale: 1.05, y: -2 }}
@@ -199,7 +244,6 @@ export default function Home() {
                   onClick={() => setValue(example.id)}
                   className="group rounded-xl bg-white/[0.04] px-4 py-2.5 text-sm border border-white/[0.08] transition-all hover:bg-white/[0.07] hover:border-white/[0.14]"
                 >
-                  <span className="text-white/40 mr-2">{example.icon}</span>
                   <span className="text-white/60 font-mono">{example.id}</span>
                   <span className="text-white/30 ml-2">({example.label})</span>
                 </motion.button>
@@ -230,28 +274,59 @@ export default function Home() {
             </div>
             <div className="space-y-3 text-sm text-white/45 leading-relaxed">
               <p>
-                Add{" "}
-                <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
-                  isual
-                </code>
-                {" "}after{" "}
-                <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
-                  arxiv
-                </code>
-                {" "}or{" "}
-                <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
-                  biorxiv
-                </code>
-                {" "}or{" "}
-                <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
-                  medrxiv
-                </code>
-                {" "}in any preprint URL.
+                {branding.source === "biorxiv" ? (
+                  <>
+                    Add{" "}
+                    <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
+                      isual
+                    </code>
+                    {" "}after{" "}
+                    <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
+                      bioRxiv
+                    </code>
+                    {" "}in any preprint URL.
+                  </>
+                ) : branding.source === "medrxiv" ? (
+                  <>
+                    Add{" "}
+                    <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
+                      isual
+                    </code>
+                    {" "}after{" "}
+                    <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
+                      medRxiv
+                    </code>
+                    {" "}in any preprint URL.
+                  </>
+                ) : (
+                  <>
+                    Add{" "}
+                    <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
+                      isual
+                    </code>
+                    {" "}after{" "}
+                    <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
+                      bioRxiv
+                    </code>
+                    {" "}or{" "}
+                    <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
+                      medRxiv
+                    </code>
+                    {" "}in any preprint URL.
+                  </>
+                )}
               </p>
               <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3 space-y-1">
-                <p className="font-mono text-xs text-white/50">arxiv.org → <span className="text-white/70">rxivisual.com</span></p>
-                <p className="font-mono text-xs text-white/50">biorxiv.org → <span className="text-white/70">biorxivisual.org</span></p>
-                <p className="font-mono text-xs text-white/50">medrxiv.org → <span className="text-white/70">medrxivisual.org</span></p>
+                {branding.source === "biorxiv" ? (
+                  <p className="font-mono text-xs text-white/50">biorxiv.org → <span className="text-white/70">biorxivisual.org</span></p>
+                ) : branding.source === "medrxiv" ? (
+                  <p className="font-mono text-xs text-white/50">medrxiv.org → <span className="text-white/70">medrxivisual.org</span></p>
+                ) : (
+                  <>
+                    <p className="font-mono text-xs text-white/50">biorxiv.org → <span className="text-white/70">biorxivisual.org</span></p>
+                    <p className="font-mono text-xs text-white/50">medrxiv.org → <span className="text-white/70">medrxivisual.org</span></p>
+                  </>
+                )}
               </div>
             </div>
           </GlassCard>
@@ -271,33 +346,35 @@ export default function Home() {
               className="h-3 w-3 bg-gradient-to-br from-white/30 to-white/10"
               style={{ clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" }}
             />
-            <span>Visualizing mathematics, one paper at a time</span>
+            <span>
+              {branding.source === "biorxiv"
+                ? "Visualizing biology preprints"
+                : branding.source === "medrxiv"
+                  ? "Visualizing medical preprints"
+                  : "Visualizing preprints, one paper at a time"}
+            </span>
           </div>
           <div className="flex items-center gap-4">
-            <a
-              className="rounded-lg px-3 py-1.5 text-white/40 border border-white/[0.06] transition hover:bg-white/[0.04] hover:text-white/60 hover:border-white/[0.12]"
-              href="https://arxiv.org"
-              target="_blank"
-              rel="noreferrer"
-            >
-              arXiv
-            </a>
-            <a
-              className="rounded-lg px-3 py-1.5 text-white/40 border border-white/[0.06] transition hover:bg-white/[0.04] hover:text-white/60 hover:border-white/[0.12]"
-              href="https://www.biorxiv.org"
-              target="_blank"
-              rel="noreferrer"
-            >
-              bioRxiv
-            </a>
-            <a
-              className="rounded-lg px-3 py-1.5 text-white/40 border border-white/[0.06] transition hover:bg-white/[0.04] hover:text-white/60 hover:border-white/[0.12]"
-              href="https://www.medrxiv.org"
-              target="_blank"
-              rel="noreferrer"
-            >
-              medRxiv
-            </a>
+            {(branding.source === "biorxiv" || branding.source === "all") && (
+              <a
+                className="rounded-lg px-3 py-1.5 text-white/40 border border-white/[0.06] transition hover:bg-white/[0.04] hover:text-white/60 hover:border-white/[0.12]"
+                href="https://www.biorxiv.org"
+                target="_blank"
+                rel="noreferrer"
+              >
+                bioRxiv
+              </a>
+            )}
+            {(branding.source === "medrxiv" || branding.source === "all") && (
+              <a
+                className="rounded-lg px-3 py-1.5 text-white/40 border border-white/[0.06] transition hover:bg-white/[0.04] hover:text-white/60 hover:border-white/[0.12]"
+                href="https://www.medrxiv.org"
+                target="_blank"
+                rel="noreferrer"
+              >
+                medRxiv
+              </a>
+            )}
             <a
               className="rounded-lg px-3 py-1.5 text-white/40 border border-white/[0.06] transition hover:bg-white/[0.04] hover:text-white/60 hover:border-white/[0.12]"
               href="https://www.manim.community/"

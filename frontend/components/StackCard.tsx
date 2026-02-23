@@ -55,6 +55,8 @@ interface StackCardProps {
     content: string;
     level?: 1 | 2 | 3;
     equations?: string[];
+    figures?: { id?: string; caption?: string; page?: number | null }[];
+    tables?: { id?: string; caption?: string; headers?: string[]; rows?: string[][] }[];
     videoUrl?: string;
   };
   index: number;
@@ -129,6 +131,9 @@ export function StackCard({
   }, [reportHeight]);
 
   const sectionNumber = String(index + 1).padStart(2, "0");
+  const parsedFigureCount = section.figures?.length ?? 0;
+  const parsedTableCount = section.tables?.length ?? 0;
+  const hasParsedVisuals = parsedFigureCount > 0 || parsedTableCount > 0;
 
   return (
     <motion.section
@@ -196,6 +201,34 @@ export function StackCard({
             <div className="mt-8">
               <div className="rounded-xl overflow-hidden border border-white/[0.06] bg-black/30">
                 <VideoPlayer src={section.videoUrl} title="Visualization" />
+              </div>
+            </div>
+          )}
+
+          {/* Parsed visual references fallback */}
+          {!section.videoUrl && hasParsedVisuals && (
+            <div className="mt-8 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
+              <div className="mb-3 text-xs uppercase tracking-wider text-white/40">
+                Parsed visuals from paper
+              </div>
+              <div className="mb-3 text-sm text-white/55">
+                {parsedFigureCount} figure{parsedFigureCount === 1 ? "" : "s"}
+                {" · "}
+                {parsedTableCount} table{parsedTableCount === 1 ? "" : "s"}
+              </div>
+              <div className="space-y-2 text-sm text-white/50">
+                {(section.figures ?? []).slice(0, 3).map((fig, i) => (
+                  <div key={fig.id ?? `fig-${i}`}>
+                    <span className="text-white/35">{fig.id || `Figure ${i + 1}`}:</span>{" "}
+                    {fig.caption || "Caption unavailable"}
+                  </div>
+                ))}
+                {(section.tables ?? []).slice(0, 2).map((tbl, i) => (
+                  <div key={tbl.id ?? `tbl-${i}`}>
+                    <span className="text-white/35">{tbl.id || `Table ${i + 1}`}:</span>{" "}
+                    {tbl.caption || "Table parsed from source"}
+                  </div>
+                ))}
               </div>
             </div>
           )}
